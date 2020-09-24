@@ -218,7 +218,7 @@ def checkAbort(iterable, labels=[], prefix=[]):
             curr = curr[i]
         key = getch.getch()
         if key is not None:
-            if key == '\x1b':
+            if key == b'\x1b':
                 print('Abort scan')
                 break
             elif hasattr(curr, '__len__') and key in [str(i+1) for i in range(len(curr))]:

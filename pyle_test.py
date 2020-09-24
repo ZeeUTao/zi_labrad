@@ -5,6 +5,7 @@ import numpy as np
 from pyle.util import sweeptools as st
 from pyle.workflow import switchSession
 from pyle.pipeline import returnValue, FutureList
+from pyle.sweeps import checkAbort
 
 from labrad.units import Unit,Value
 V, mV, us, ns, GHz, MHz, dBm, rad = [Unit(s) for s in ('V', 'mV', 'us', 'ns', 'GHz', 'MHz', 'dBm', 'rad')]
@@ -16,7 +17,7 @@ cxn=labrad.connect()
 dv = cxn.data_vault
 
 # specify the sample, in registry   
-ss = switchSession(cxn,user='Ziyu',session=None)  
+ss = switchSession(cxn,user='user1',session=None)  
 
 
     
@@ -41,6 +42,7 @@ def loadQubits(sample, write_access=False):
 
 
 def gridSweep(axes):
+    # yield (all axes), (swept axes)
     if not len(axes):
         yield (), ()
     else:
@@ -102,8 +104,9 @@ def s21_scan(sample,freq = ar[1.:6.:0.01,GHz],power = st.r[-1:-30:1,dBm],zpa =0.
             else:
                 args_new.append(a[a.unit])      
         return args_new
-        
-    for axes_scan in gridSweep(axes):
+    
+    axes_scans = checkAbort(gridSweep(axes), prefix=[1])
+    for axes_scan in axes_scans:
         (freq,power,zpa) = axes_scan[0]
         
         data = runQ(freq[freq.unit])
@@ -125,6 +128,6 @@ def s21_scan(sample,freq = ar[1.:6.:0.01,GHz],power = st.r[-1:-30:1,dBm],zpa =0.
     
     return
 
-if__name__=="__main__"
+if __name__ == '__main__':
     s21_scan(ss)
 
