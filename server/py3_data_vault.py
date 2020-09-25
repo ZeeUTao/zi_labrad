@@ -490,6 +490,15 @@ class Dataset:
         count = S.getint(gen, 'Dependent')
         self.dependents = [getDep(i) for i in range(count)]
 
+        def unit2num(a):
+            a1 = 0.0
+            if type(a) is list:
+                a1 = ValueArray(a)
+                return a1[a1.unit]
+            if type(a) is Value:
+                return a[a.unit]
+            
+            return a1        
         def getPar(i):
             sec = 'Parameter %d' % (i+1)
             label = S.get(sec, 'Label', raw=True)
@@ -506,8 +515,27 @@ class Dataset:
                 except:pass
                 else:
                     getS=getS[:-1]
-            # change into eval
-            data = eval(getS)
+            
+
+
+            # 2. None type units error             
+            if 'None' in getS:
+                try:
+                    getS1 = getS.replace('None','\'None\'')
+                    eval(getS1)
+                except:pass
+                else:
+                    getS = getS1
+                    data = eval(getS)
+                    return dict(label=label, data=unit2num(data))
+                    
+            # eval the string
+            try:
+                eval(getS)
+            except:
+                raise ValueError('eval() error, check the units value: ',getS)
+            else:
+                data = eval(getS)
             return dict(label=label, data=data)
         count = S.getint(gen, 'Parameters')
         self.parameters = [getPar(i) for i in range(count)]
