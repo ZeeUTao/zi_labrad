@@ -17,7 +17,7 @@ cxn=labrad.connect()
 dv = cxn.data_vault
 
 # specify the sample, in registry   
-ss = switchSession(cxn,user='user1',session=None)  
+ss = switchSession(cxn,user='hwh',session=None)  
 
 
     
@@ -125,9 +125,7 @@ def s21_scan(sample,freq = ar[1.:6.:0.01,GHz],power = st.r[-1:-30:1,dBm],zpa =0.
         dv.add(data_send)
     
     
-    
     return
 
 if __name__ == '__main__':
     s21_scan(ss)
-

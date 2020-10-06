@@ -3,100 +3,118 @@ import textwrap ## to write sequencer's code
 import time ## show total time in experiments
 import matplotlib.pyplot as plt ## give picture
 import numpy as np 
-from numpy import pi
-from math import ceil
+# from numpy import pi
+from math import ceil,pi
 from pyle.registry import RegistryWrapper
 import labrad
 from labrad.units import Unit,Value
 _unitSpace = ('V', 'mV', 'us', 'ns','s', 'GHz', 'MHz','kHz','Hz', 'dBm', 'rad','None')
 V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l  = [Unit(s) for s in _unitSpace]
+import pyvisa
 
-# init
-qa,hd,mw,yoko = [None]*4
+from conf import loadInfo,qa,hd,mw,mw_r
+from waveforms import convertUnits,waveform
 
 
-def loadInfo(paths=['Servers','devices']):
-    cxn=labrad.connect()
-    reg = RegistryWrapper(cxn, ['']+paths)
-    return reg.copy()
-
-def bringup_device(modes=[1,2]):
-    global qa,hd,mw,yoko
-    dev = loadInfo(paths=['Servers','devices']) ## only read
-    for m in modes:
-        if m == 1:
-            qa = zurich_qa(dev.zi_qa_id)
-        if m == 2:
-            hd = zurich_hd(dev.zi_hd_id)
-        if m == 3:
-            mw = microwave_source(dev.microwave_source_ip)
-        # if m == 4:
-        #     yoko = yokogawa_dc_source(dev.yokogawa_dc_ip)
 
 def init_device(back=False):
-    """
-    initialize all device setup; 
+    """  initialize all device setup; 
     """
     qa.init_setup()
     hd.init_setup()
-    # mw.init_setup()
+    mw.init_setup()
+    mw_r.init_setup()
     # yoko.init_setup()
 
+
+def check_device():
+    """
+    Make sure all device in work before runQ
+    """
+    try:
+        while mw.get_output()==0:
+            mw.set_output(1)
+    except:
+        mw.bringup()
+        print('MW bring up again.')
+    try:
+        while mw_r.get_output()==0:
+            mw_r.set_output(1)
+    except:
+        mw_r.bringup()
+        print('MW_r bring up again.')
+
+
 def stop_device():
+    """  close all device; 
+    """
     qa.stop_subscribe()
     hd.awg_close_all()
-    # dv.close(ctx)
     # mw.set_output(False)
+    # mw_r.set_output(False)
     # yoko.set_off()
 
 
 def mpAwg_init(q,stats):
-    ## stats: Number of Samples for one sweep point;
-    ## get commonly used value
-    sb_freq = q['readout_freq'][Hz] - q['readout_fc'][Hz]
-    port_xy,port_dc,port_z = int(q['chan_xy'][2]),int(q['chan_dc'][2]),int(q['chan_z'][2])
-
-    ## initialize instruments
-    # t0 = time.time()
-    # init_device() ## 初始化仪器的设置,避免上次实验的影响; 这部分用时较长；
-    # print('initialized time:',time.time()-t0)
-
-
-    t0 = time.time()
-    hd.pulse_length_s = 0
+    """
+    stats: Number of Samples for one sweep point;
+    get commonly used value
+    """
+    hd.pulse_length_s = 0 ## add hdawgs length with unit[s]
     qa.result_samples = stats  ## sample number for one sweep point
-    qa.set_adc_trig_delay(q['bias_start'][s]+hd.pulse_length_s+q['readout_delay'][s])
-    qa.set_pulse_length(q['readout_len'][s])
-    qa.set_qubit_frequency([sb_freq])
+    qa.set_adc_trig_delay(q['bias_start']+hd.pulse_length_s*s, q['readout_delay'])
+    qa.set_pulse_length(q['readout_len'])
+    qa.set_qubit_frequency([q.demod_freq])
     qa.set_subscribe(source=7)
-    print('qa-set_para:',time.time()-t0)
-    # mw.set_power(q['microwave_power']['dBm'])
-    # mw.set_freq(q['readout_fc'][Hz])
-
-    ## initialize zi's awgs and building 
-    w_qa = waveform(all_length=q['bias_start'][s]+hd.pulse_length_s+qa.pulse_length_s+q['bias_end'][s],fs=1.8e9,origin=-q['bias_start'][s])
-    w_hd = waveform(all_length=q['bias_start'][s]+hd.pulse_length_s+qa.pulse_length_s+q['bias_end'][s],fs=2.4e9,origin=-q['bias_start'][s])
-    q_dc = w_hd.square(amp=0)
-    # q_r = [w_qa.square(amp=0),w_qa.square(amp=0)] ## (I,Q)--Two Channels
-    q_r = [w_qa.square(amp=0.00,start=0,end=0+q['readout_len'][s]),w_qa.square(amp=0.00,start=0,end=0+q['readout_len'][s])]
-    # print(len(q_dc),len(q_r[0]))
-
+    ## set 'microwave source [readout]'
+    mw_r.set_power(q['readout_mw_power'])
+    mw_r.set_freq(q['readout_mw_fc'])
+    ## set 'microwave source [XY]'
+    mw.set_power(q['xy_mw_power'])
+    mw.set_freq(q['xy_mw_fc'])
+    ## initialize waveforms and building 
+    w_qa = waveform(all_length=qa.pulse_length_s,fs=1.8e9,origin=0) ## only readout pulse; 
+    w_hd = waveform(all_length=q['bias_start'][s]+q['awgs_pulse_len'][s]+qa.pulse_length_s+q['bias_end'][s],fs=2.4e9,origin=-q['bias_start'][s]) ## beginning from bias start
+    q.dc = [w_hd.bias(amp=0.4,length=q['bias_start'][s]+q['awgs_pulse_len'][s]+qa.pulse_length_s+q['bias_end'][s])]
+    q.xy = [w_hd.square(amp=0.2),w_hd.square(amp=0.2)]
+    q.z = [w_hd.square(amp=0.3)]
+    q.r = [w_qa.square(amp=0),w_qa.square(amp=0)]
     ## set hd's awgs waveforms
     t0 = time.time()
-    hd.awg_builder(waveform = [q_dc], ports=[port_dc], trigger=1) ## 开启hd等待trigger的模式
+    hd.awg_builder(waveform=q.xy+q.dc+q.z, ports=[q.ch['xy_I'],q.ch['xy_Q'],q.ch['dc'],q.ch['z']])
     print('hd-awg_builder:',time.time()-t0)
     ## set qa's awgs waveforms
     t0 = time.time()
-    qa.awg_builder(waveform = q_r)
+    qa.awg_builder(waveform = q.r)
     print('qa-awg_builder:',time.time()-t0)
     ### ----- finish ----- ###
     return w_qa,w_hd
 
 
+
+def hd_send_waveform(waveforms,ports=[]):
+    if len(ports) == 0:
+        ports = np.arange(len(waveforms))+1 ## with 1,2,3,...
+    for awg_index in range(4):
+        wf=[]
+        for p,w in zip(ports,waveforms):
+            if p in [awg_index*2+1,awg_index*2+2]:
+                wf.append(w)
+        ## (dev_id, awg编号(看UI的awg core), index是wave编号;)
+        if len(wf)>0:
+            waveform_native = convert_awg_waveform(wf)
+            path = '/{:s}/awgs/{:d}/waveform/waves/{:d}'.format(hd.id,awg_index,0)
+            hd.daq.setVector(path, waveform_native)
+
+
+
+
+
+
+
 class zurich_qa(object):
     def __init__(self,device_id):   
         self.id = device_id
-        self.FS = 1.8e9 ## 采样率
         self.noisy = False ## 开启的话, 会打开所有正常工作时的print语句
         required_devtype = 'UHFQA'
         required_options = ['']
@@ -106,6 +124,7 @@ class zurich_qa(object):
             zhinst.utils.disable_everything(self.daq, self.device)       
         except:
             print('初始化失败，请检查仪器')
+        self.FS = 1.8e9/(self.daq.getInt('/{:s}/awgs/0/time'.format(self.device))+1) ## 采样率
         self.init_setup()
 
     def init_setup(self):
@@ -156,21 +175,28 @@ class zurich_qa(object):
         # Arm the device
         self.daq.sync() ## 同步设置
 
-    # def set_result_samples(self,num):
-    #     self.result_samples = num
-    #     self.daq.setDouble('/{:s}/awgs/0/userregs/1'.format(self.device), self.result_samples)# #results length
 
     ####--AWG波形设置部分--####
-    def set_adc_trig_delay(self,delay):
+    @convertUnits(delay='s', readout_delay='s')
+    def set_adc_trig_delay(self,delay,readout_delay=None):
         self.adc_trig_delay_s = int(delay*self.FS/8)*8/self.FS ## unit: second
         self._adc_trig_delay_ = self.adc_trig_delay_s*self.FS ## delay from dc trigger to ADC trigger; unit -> Sample Number
-
+        self.daq.setDouble('/{:s}/awgs/0/userregs/0'.format(self.device), self._adc_trig_delay_/8) # qa._adc_trig_delay_
+        if readout_delay is not None:
+            self.set_readout_delay(readout_delay)
+            
+    @convertUnits(readout_delay_s='s')
+    def set_readout_delay(self,readout_delay_s):
+        delay_sample = int(readout_delay_s*self.FS/4)*4 ## unit: Sample Number
+        self.daq.setDouble('/{:s}/qas/0/delay'.format(self.device),delay_sample)
+    
+    @convertUnits(length='s')
     def set_pulse_length(self, length):
         self.pulse_length_s = int(length*self.FS/8)*8/self.FS
         self._pulse_length_ =  self.pulse_length_s*self.FS ## unit --> Sample Number
         self._integration_length_ = self._pulse_length_ ## unit --> Sample Number
 
-    def awg_builder(self, sampling_rate = 1.8e9, waveform = [[0.0], [0.0]], trigger = 0):
+    def awg_builder(self, waveform = [[0],[0]], trigger = 0):
         """根据构建一个awg 程序， waveform的波形同时播放；可以工作在被触发模式 trigger =1 """       
         # #检查波形每个点的值是否超过1、波形是没有单位的，不应该超过1
         # assert np.max(waveform) <= 1, '\n waveform value is dimensionless, less than 1. Check waveform values before proceed.\n'     
@@ -182,7 +208,7 @@ class zurich_qa(object):
             # wave wave1 = vect(_w1); wave wave2 = vect(_w2_);...
             str0 = str0 + define_str.replace('0', str(i+1)).replace('_w_', ','.join([str(x) for x in waveform[i]]))
             # 1, w1, 2, w2, ....
-            play_str = play_str + (  ','+ str(i+1) + ', wave'+str(i+1) )
+            play_str = play_str + (  ','+ str(i+1) + ',wave'+str(i+1) )
         
         play_str = play_str[1:]
         
@@ -199,8 +225,8 @@ class zurich_qa(object):
                 setTrigger(0b11); // trigger other device: rise
                 wait(10e-9*f_s/8); // trigger长度为10ns
                 setTrigger(0b00); // trigger other device: fall
+                wait(getUserReg(0)); // wait time = qa._adc_trig_delay_
                 playWave($play_str);
-                wait(_c1_); // wait time = qa._adc_trig_delay_
                 setTrigger(AWG_INTEGRATION_ARM + AWG_INTEGRATION_TRIGGER + AWG_MONITOR_TRIGGER);// 开始抓取信号，进行integration
                 setTrigger(AWG_INTEGRATION_ARM);//重置
                 waitWave();
@@ -209,43 +235,12 @@ class zurich_qa(object):
         //wait(200e-6*f_s/8); // 间隔200us
         }        
         """)
-        awg_program = awg_program.replace('_c0_', str(sampling_rate))
-        awg_program = awg_program.replace('_c1_', str(self._adc_trig_delay_/8))
+        awg_program = awg_program.replace('_c0_', str(self.FS))
+        # awg_program = awg_program.replace('_c1_', 'getUserReg(0)')
         awg_program = awg_program.replace('_c2_', str(self.result_samples))
         awg_program = awg_program.replace('_c3_', str(self.average))
         awg_program = awg_program.replace('$str0', str0)
         awg_program = awg_program.replace('$play_str', play_str)
-
-        # awg_program = textwrap.dedent("""\
-        # const FS = 1.8e9;
-        # const LENGTH = _c1_;
-        # const N = floor(LENGTH*FS);
-        # wave w = ones(N);
-
-        # setTrigger(AWG_INTEGRATION_ARM);
-
-        # repeat(_c2_) {
-        #     playWave(w, w);
-        #     //wait(0);
-        #     setTrigger(AWG_INTEGRATION_ARM + AWG_INTEGRATION_TRIGGER +AWG_MONITOR_TRIGGER);
-        #     setTrigger(AWG_INTEGRATION_ARM);
-        #     waitWave();
-        #     wait(200e-6*FS/8);
-        # }
-        # """)
-        # awg_program = awg_program.replace('_c1_', str(self.pulse_length_s))
-        # awg_program = awg_program.replace('_c2_', str(self.result_samples))
-
-        # #如果是触发模式，加入触发指令，触发在trigger input1 的上升沿
-        # if trigger !=0:
-        #     awg_program = awg_program.replace('//waitDigTrigger(1);','waitDigTrigger(1);') # set trigger
-        #     awg_program = awg_program.replace('setTrigger(0b11);','//setTrigger(0b11);') # set trigger
-        #     # trigger on the rise edge, the physical trigger port is trigger 1 at the frnont panel
-        #     #impedance 50 at trigger input. trigger level 0.7 
-        #     self.daq.setInt('/{:s}/awgs/0/auxtriggers/0/slope'.format(self.device), 1)
-        #     self.daq.setInt('/{:s}/awgs/0/auxtriggers/0/channel'.format(self.device), 0)
-        #     self.daq.setInt('/{:s}/triggers/in/0/imp50'.format(self.device), 0)            
-        #     self.daq.setDouble('/{:s}/triggers/in/0/level'.format(self.device), 0.7)
         self.awg_upload_string(awg_program)
 
     def awg_upload_string(self,awg_program, awg_index = 0): 
@@ -278,10 +273,9 @@ class zurich_qa(object):
             print('\n AWG upload successful. Output enabled. AWG Standby. \n')
 
 
-    def reload_waveform(self,waveform,awg_index=0,index=0): ## (dev_id, awg编号(默认0), index是wave编号;)
-        waveform_native = zhinst.utils.convert_awg_waveform(waveform[0],waveform[1])
+    def reload_waveform(self,waveform,awg_index=0,index=0): ## (dev_id, awg编号(看UI的awg core), index是wave编号;)
+        waveform_native = convert_awg_waveform(waveform)
         path = '/{:s}/awgs/{:d}/waveform/waves/{:d}'.format(self.id,awg_index,index)
-        # print(len(waveform_native))
         self.daq.setVector(path, waveform_native)
 
 
@@ -433,7 +427,6 @@ class zurich_qa(object):
 class zurich_hd(object):
     def __init__(self,device_id):
         self.id = device_id
-        self.FS = 2.4e9 ## 采样率
         self.pulse_length_s = 0 ## waveform length; unit --> Sample Number
         self.noisy = False
         """初始化AWG，仪器都为默认设置"""
@@ -444,7 +437,7 @@ class zurich_hd(object):
             zhinst.utils.disable_everything(self.daq, self.device)       
         except:
             print('初始化失败，请检查仪器')
-
+        self.FS = self.daq.getDouble('/{:s}/system/clocks/sampleclock/freq'.format(self.device)) ## 采样率
         self.init_setup()
 
     def init_setup(self):
@@ -477,48 +470,36 @@ class zurich_hd(object):
         # Ensure that all settings have taken effect on the device before continuing.
         self.daq.sync()
 
-    def awg_builder(self, waveform = [[0.11,0.222], [0.333,0.444]],ports=[], trigger = 1, awg_index = 0):
-        """根据波形构建一个awg 程序， waveform的波形同时播放，可以工作在被触发模式trigger =1 """
-        #sampling rate = 2.4e9
-        #waveform = [wave1, wave2, wave3,...]
-        #trigger =1 tgrigger mode on; trigger = 0 tigger removed.
-        
-        #用来构建简单的AWG sequence 程序，可以无限循环播放两个通道的两个波形
-        #可以带触发，trigger = 1; 如果不打触发，waitDigTrigger(1) 会被注释掉
-        #程序整体结构如下
-        #wave wave1 = vect(0,0,0,0,1.0,1.0,1,1,0,0,0,0,1,1,1,1,0,0,0,0);
-        #wave wave2 = vect(0,0,0,0,1.0,1.0,1,1,0,0,0,0,1,1,1,1,0,0,0,0);
-        
-        #while(1){
-        #setTrigger(1);
-        #setTrigger(0);
-        #//waitDigTrigger(1)；
-        #playWave(1, wave1,2, wave2);
-        #}
-        
-        #检查波形每个点的值是否超过1、波形是没有单位的，不应该超过1
-        # assert np.max(waveform) <= 1, '\n waveform value is dimensionless, less than 1. Check waveform values before proceed.\n'     
+    def awg_builder(self,waveform=[[0]],ports=[],awg_index=0):
+        """
+        根据波形构建一个awg 程序， waveform的波形同时播放，可以工作在被触发模式trigger =1 
+        """
         #构建波形
+        wave_len = len(waveform[0])
         define_str = 'wave wave0 = vect(_w_);\n'
         str0 = ''
         play_str = ''
         if len(ports) == 0:
             ports = np.arange(len(waveform))+1
+
         j = 0
         for i in ports:
-            # wave wave1 = vect(_w1); wave wave2 = vect(_w2_);...
-            str0 = str0 + define_str.replace('0', str(i)).replace('_w_', ','.join([str(x) for x in waveform[j]]))
-            # 1, w1, 2, w2, ....
-            play_str = play_str + (  ','+ str(i) + ', wave'+str(i) )
+            wf = waveform[j]
+            # if len(wf)==2: ## 注意非bias的waveform就不要发送那么短的list了!!
+            #     str0 = str0 + 'wave bias%i = %f*ones(%i);\n'%(i,float(wf[0]),int(wf[1]))
+            #     play_str = play_str + (','+str(i)+',bias'+str(i))
+            # else:
+            str0 = str0 + define_str.replace('0', str(i)).replace('_w_', ','.join([str(x) for x in wf]))
+            play_str = play_str + (  ','+ str(i) + ',wave'+str(i) )
             j += 1
-        
         play_str = play_str[1:]
         
         awg_program = textwrap.dedent("""\
+        const f_s = _c0_;
         $str0
         while(1){
-        setTrigger(0b000);
-        setTrigger(0b001);
+        setTrigger(0b00);
+        setTrigger(0b01);
         waitDigTrigger(1);
         playWave($play_str);
         waitWave();
@@ -526,27 +507,7 @@ class zurich_hd(object):
         """)
         awg_program = awg_program.replace('$str0', str0)
         awg_program = awg_program.replace('$play_str', play_str)
-        
-        # #如果是触发模式，加入触发指令，触发在trigger input1 的上升沿
-        # if trigger !=0:
-        #     awg_program = awg_program.replace('//waitDigTrigger(1)；','waitDigTrigger(1);') # set trigger
-        #     # trigger on the rise edge, the physical trigger port is trigger 1 at the frnont panel
-        #     # impedance 50 at trigger input. trigger level 0.7 
-        #     self.daq.setInt('/{:s}/awgs/0/auxtriggers/0/slope'.format(self.device), 1)
-        #     self.daq.setInt('/{:s}/awgs/0/auxtriggers/0/channel'.format(self.device), 0)
-        #     self.daq.setInt('/{:s}/triggers/in/0/imp50'.format(self.device), 0)            
-        #     self.daq.setDouble('/{:s}/triggers/in/0/level'.format(self.device), 0.7)
-        
-        # #如果需要一次播放多个信号，我们需要更改通道的grouping
-        # if len(waveform)<3:
-        #     self.awg_grouping(0)
-        # if len(waveform)>2&len(waveform)<4:
-        #     self.awg_close_all()
-        #     self.awg_grouping(1)
-        # if len(waveform)>4:
-        #     self.awg_close_all()
-        #     self.awg_grouping(2)
-
+        awg_program = awg_program.replace('_c0_', str(self.FS))
         self.awg_upload_string(awg_program, awg_index)
 
 
@@ -579,16 +540,15 @@ class zurich_hd(object):
         if self.noisy:
             print('\n AWG upload successful. Output enabled. AWG Standby. \n')
 
-    def reload_waveform(self,waveform,awg_index=0,index=0): ## (dev_id, awg编号(默认0), index是wave的编号;)
-        waveform_native = zhinst.utils.convert_awg_waveform(waveform)
+    def reload_waveform(self,waveform,awg_index=0,index=0): ## (dev_id, awg编号(看UI的awg core), index是wave的编号;)
+        waveform_native = convert_awg_waveform(waveform)
+        print(len(waveform_native))
         path = '/{:s}/awgs/{:d}/waveform/waves/{:d}'.format(self.id,awg_index,index)
-        # print(len(waveform_native))
         self.daq.setVector(path, waveform_native)
 
 
     def awg_open(self):
         """打开AWG， 打开输出，设置输出量程"""
-        # run = 1 start AWG, run =0 close AWG
         self.daq.setInt('/{:s}/awgs/{}/enable'.format(self.device, 0), 1)
         if self.noisy:
             print('\n AWG running. \n')
@@ -618,21 +578,22 @@ class microwave_source(object):
         self.ip = device_ip
         self.freq = 0
         self.power = 0
-        rm = pyvisa.ResourceManager()
-        self.dev = rm.open_resource('TCPIP0::%s::inst0::INSTR' %device_ip)
-        self.init_setup()
+        self.rm = pyvisa.ResourceManager()
+        self.bringup()
 
     def init_setup(self):
         while self.get_output() == 0:
             self.set_output(1)
 
-    def set_freq(self,freq):
-        self.dev.write(':sour:freq %f Hz'%freq)
-
     def get_freq(self):
         self.freq = float(self.dev.query(':sour:freq?'))
         return self.freq
 
+    @convertUnits(freq='Hz')
+    def set_freq(self,freq):
+        self.dev.write(':sour:freq %f Hz'%freq)
+
+    @convertUnits(power='dBm')
     def set_power(self,power):
         self.dev.write(':sour:pow %f'%power) ## unit:dBm
 
@@ -646,6 +607,12 @@ class microwave_source(object):
 
     def set_output(self,state):
         self.dev.write(':outp:stat %d'%state)
+
+    def bringup(self):
+        self.dev = self.rm.open_resource('TCPIP0::%s::inst0::INSTR' %self.ip)
+        self.init_setup()
+        print('Bring up MW:%s'%self.ip)
+
 
 
 
@@ -693,28 +660,33 @@ class yokogawa_dc_source(object):
             self.dev.write(':outp:stat %d'%self.state)
 
 
-
-
-class waveform(object):
-    """ 2020.09.17 hwh
-    Create waveform's array from different device; 
-    Consider total length and sampling frequency at first;
+def convert_awg_waveform(wave_list):
     """
-    def __init__(self,all_length=1e-6,fs=1.8e9,origin=0):
-        self.fs = fs
-        self.sample_number = ceil(all_length*self.fs/8)*8
-        self.len = self.sample_number/self.fs ## set as 8 sample integral multiple;
-        self.origin = origin ## mark real start in waveform; set QA trigger as 0  
-        self.tlist = np.asarray([k/self.fs+self.origin for k in range(self.sample_number)])
+    Converts one or multiple arrays with waveform data to the native AWG
+    waveform format (interleaved waves and markers as uint16).
 
-    def square(self,start=50e-9,end=150e-9,amp=1.0):
-        pulse = [amp*(start<=t<end) for t in self.tlist]
-        return np.asarray(pulse)
+    Waveform data can be provided as integer (no conversion) or floating point
+    (range -1 to 1) arrays.
 
-    def sine(self,amp=0.1,phase=0.0,start=0,end=1e-6,freq=10e6):
-        pulse = [amp*np.sin(2*pi*freq*t+phase)*(start<=t<end) for t in self.tlist]
-        return np.asarray(pulse)
-    
-    def cosine(self,amp=0.1,phase=0.0,start=0,end=1e-6,freq=10e6):
-        pulse = [amp*np.cos(2*pi*freq*t+phase)*(start<=t<end) for t in self.tlist]
-        return np.asarray(pulse)
+    Arguments:
+      wave1 (array): Array with data of waveform 1.
+      wave2 (array): Array with data of waveform 2.
+      ...
+    Returns:
+      The converted uint16 waveform is returned.
+
+    ** waveform reload needs each two channel one by one.
+    """
+    def uint16_waveform(wave): # Prepare waveforms
+        wave = np.asarray(wave)
+        if np.issubdtype(wave.dtype, np.floating):
+            return np.asarray((np.power(2, 15) - 1) * wave, dtype=np.uint16)
+        return np.asarray(wave, dtype=np.uint16)
+
+    data_list = [uint16_waveform(w) for w in wave_list]
+    waveform_data = np.vstack(tuple(data_list)).reshape((-2,), order='F')
+    return waveform_data
+
+
+
+
