@@ -4,17 +4,21 @@ python script to control Zurich instruments by using labrad.
 
 
 
-## Requirement
+## Requirements
 
-- Suggested python version: 3.6.4
+- python3, (suggested: 3.6.4)
 
 - [scalabrad](https://github.com/ZeeUTao/scalabrad)
 
   Binary distribution of scalabrad are distributed via [binary](https://bintray.com/labrad/generic/scalabrad#files)
 
+  [source code of scalabrad](https://github.com/ZeeUTao/scalabrad).
+
 - [pylabrad](https://github.com/ZeeUTao/pylabrad-zeeu)
 
+  ```CMD
   pip install pylabrad
+  ```
 
   or see the forked github repository: https://github.com/ZeeUTao/pylabrad-zeeu 
 
@@ -28,7 +32,26 @@ python script to control Zurich instruments by using labrad.
 
 Change the directory in `\server\xxx.ini`, see `\server\README.txt`. 
 
-- run [scalabrad](https://github.com/ZeeUTao/scalabrad) via `server\open_scalabrad`, or other ways
+You can map a directory as M disk `M:\` for the data storage and avoid changing the directory. 
+
+```CMD
+@echo off
+subst m: /d
+subst m: %cd%
+```
+
+
+
+- run [scalabrad-binary](https://bintray.com/labrad/generic/scalabrad#files) via `server\open_scalabrad`: 
+
+  ```CMD
+  M:\scalabrad\bin\labrad --registry file:///M:/Registry?format=delphi
+  ```
+
+  or other ways
+
+  
+
 - run `LabRAD.exe`, `Registry.exe`, `Grapher.exe` in `\server\`
 
 - run `pyle_test.py` to test. 

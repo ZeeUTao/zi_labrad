@@ -1,1 +1,1 @@
-N:\scalabrad\bin\labrad --registry file:///N:/Registry?format=delphi
+M:\scalabrad\bin\labrad --registry file:///M:/Registry?format=delphi
