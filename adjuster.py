@@ -1,3 +1,12 @@
+# -*- coding: utf-8 -*-
+"""Interface with sliders and buttons to adjust parameters
+
+
+"""
+
+
+
+
 from queue import Empty
 from multiprocessing import Process, Queue
 import numpy as np

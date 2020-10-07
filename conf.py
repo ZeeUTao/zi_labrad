@@ -1,3 +1,11 @@
+# -*- coding: utf-8 -*-
+"""Script to initiate instrument
+
+It is rarely changed and used as a single '.py' file to avoid re-initiate instrument.
+Especially when we reload the other frequently changed codes, like zurichHelper.py. 
+"""
+
+
 import labrad
 from pyle.registry import RegistryWrapper
 from pyle.workflow import switchSession
@@ -7,6 +15,18 @@ qa,hd,mw,mw_r = [None]*4
 
 
 def loadInfo(paths=['Servers','devices']):
+    """
+    load the sample information from specified directory.
+
+    Args:
+        paths (list): Array with data of waveform 1.
+
+    Returns: 
+        reg.copy() (dict): 
+        the key-value information from the directory of paths
+
+    ** waveform reload needs each two channel one by one.
+    """
     cxn=labrad.connect()
     reg = RegistryWrapper(cxn, ['']+paths)
     return reg.copy()

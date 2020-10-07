@@ -1,3 +1,7 @@
+# -*- coding: utf-8 -*-
+"""tested codes
+"""
+
 from pyle import sweeps
 import labrad
 import time
