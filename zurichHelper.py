@@ -1,10 +1,18 @@
+# -*- coding: utf-8 -*-
+"""
+Helpers for Zurich Instruments
+
+including classes for AWG devices, microwave sources
+"""
+
+import logging
 import zhinst.utils ## create API object
 import textwrap ## to write sequencer's code
 import time ## show total time in experiments
 import matplotlib.pyplot as plt ## give picture
 import numpy as np 
-# from numpy import pi
 from math import ceil,pi
+
 from pyle.registry import RegistryWrapper
 import labrad
 from labrad.units import Unit,Value
@@ -12,69 +20,135 @@ _unitSpace = ('V', 'mV', 'us', 'ns','s', 'GHz', 'MHz','kHz','Hz', 'dBm', 'rad','
 V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l  = [Unit(s) for s in _unitSpace]
 import pyvisa
 
-from conf import loadInfo,qa,hd,mw,mw_r
 from waveforms import convertUnits,waveform
 
+logging.basicConfig(format='%(asctime)s | %(name)s [%(levelname)s] : %(message)s',
+                    level=logging.INFO
+                    )
 
 
-def init_device(back=False):
-    """  initialize all device setup; 
+
+def _call_object_func(server: object,_name_eval: dict,command: None or str = None)->bool:
+    """  call an object accroding to a dict
+
+    Example:
+        _name_eval = {
+        'zurich_qa':'init_setup'}
+        
+        _call_object_func(qa,_name_eval) # qa is instance of zurich_qa
+        equals to: qa.init_setup()
+
+    Returns:
+        False if server name not in _name_eval.keys()
+        else: True
     """
-    qa.init_setup()
-    hd.init_setup()
-    mw.init_setup()
-    mw_r.init_setup()
-    # yoko.init_setup()
+    name = server.__class__.__name__
+
+    if command == None:
+        command = r'server.' + _name_eval[name] + '()'
+    
+    if name not in _name_eval.keys():
+        logging.info("some of args of server:object (qa,hd...) invalid")
+        return False
+    else:
+        try:
+            eval(command)
+            logging.info(name+" successfully call %s",_name_eval[name])
+        except:
+            logging.warning(name+"cannot call %s",_name_eval[name])
+        return True
 
 
-def check_device():
+
+def _init_device(*servers:object):
+    """  initialize all server setup; 
+    Example: _init_device(qa,hd,mw,mw_r)
     """
-    Make sure all device in work before runQ
+    _name_eval = {
+    'zurich_qa':'init_setup',
+    'zurich_hd':'init_setup',
+    'microwave_source':'init_setup',
+    }
+
+    for server in servers:
+        _call_object_func(server,_name_eval)
+    return
+
+
+def _check_device(*servers:object):
     """
-    try:
-        while mw.get_output()==0:
-            mw.set_output(1)
-    except:
-        mw.bringup()
-        print('MW bring up again.')
-    try:
-        while mw_r.get_output()==0:
-            mw_r.set_output(1)
-    except:
-        mw_r.bringup()
-        print('MW_r bring up again.')
+    Make sure all device in work before runQ, or bringup again
+    Args:
+        *servers: one or more server, server is an instance
+    Example: 
+        _check_device(mw,mw_r)
+        mw,mw_r are instances of microwave_source
+    """
+    _name_eval = {
+    'microwave_source':'refresh',
+    }
+    for server in servers:
+        _call_object_func(server,_name_eval)
+    return
 
 
-def stop_device():
+def _stop_device(*servers:object):
     """  close all device; 
+    Args:
+        *servers: one or more server, server is an instance
+    Example: 
+        _stop_device(qa,hd)
+        qa,hd: instances of zurich_qa and zurich_hd
     """
-    qa.stop_subscribe()
-    hd.awg_close_all()
-    # mw.set_output(False)
-    # mw_r.set_output(False)
-    # yoko.set_off()
+    _name_eval = {
+    'zurich_qa':'stop_subscribe',
+    'zurich_hd':'awg_close_all',
+    }
+
+    for server in servers:
+        _call_object_func(server,_name_eval)
+    return
 
 
-def mpAwg_init(q,stats):
+def _mpAwg_init(q,stats: int,*servers):
     """
-    stats: Number of Samples for one sweep point;
-    get commonly used value
+    prepare and Returns waveforms
+    Args:
+        q (dict): contains value as parameter
+        stats: Number of Samples for one sweep point;
+
+        qa (object): zurich_qa instance
+        hd (object): zurich_hd instance
+        mw,mw_r (object): microwave_source instance
+    
+    Returns:
+        w_qa (object): waveform instance for qa
+        w_hd (object): waveform instance for hd
+
+    TODO: better way to generate w_qa, w_hd
+    try to create features in the exsiting class but not create a new function
     """
+    qa,hd,mw,mw_r = servers[:4]
+
     hd.pulse_length_s = 0 ## add hdawgs length with unit[s]
+
     qa.result_samples = stats  ## sample number for one sweep point
     qa.set_adc_trig_delay(q['bias_start']+hd.pulse_length_s*s, q['readout_delay'])
     qa.set_pulse_length(q['readout_len'])
     qa.set_qubit_frequency([q.demod_freq])
     qa.set_subscribe(source=7)
+
     ## set 'microwave source [readout]'
     mw_r.set_power(q['readout_mw_power'])
     mw_r.set_freq(q['readout_mw_fc'])
     ## set 'microwave source [XY]'
     mw.set_power(q['xy_mw_power'])
     mw.set_freq(q['xy_mw_fc'])
-    ## initialize waveforms and building 
+
     w_qa = waveform(all_length=qa.pulse_length_s,fs=1.8e9,origin=0) ## only readout pulse; 
-    w_hd = waveform(all_length=q['bias_start'][s]+q['awgs_pulse_len'][s]+qa.pulse_length_s+q['bias_end'][s],fs=2.4e9,origin=-q['bias_start'][s]) ## beginning from bias start
+    w_hd = waveform(all_length=q['bias_start'][s]+q['awgs_pulse_len'][s]+qa.pulse_length_s+q['bias_end'][s],fs=2.4e9,origin=-q['bias_start'][s])
+    ## initialize waveforms and building 
+
     # q.dc = [w_hd.bias(amp=0.4,length=q['bias_start'][s]+q['awgs_pulse_len'][s]+qa.pulse_length_s+q['bias_end'][s])]
     # q.xy = [w_hd.square(amp=0.2),w_hd.square(amp=0.2)]
     # q.z = [w_hd.square(amp=0.3)]
@@ -89,25 +163,6 @@ def mpAwg_init(q,stats):
     # print('qa-awg_builder:',time.time()-t0)
     ### ----- finish ----- ###
     return w_qa,w_hd
-
-
-
-def hd_send_waveform(waveforms,ports=[]):
-    if len(ports) == 0:
-        ports = np.arange(len(waveforms))+1 ## with 1,2,3,...
-    for awg_index in range(4):
-        wf=[]
-        for p,w in zip(ports,waveforms):
-            if p in [awg_index*2+1,awg_index*2+2]:
-                wf.append(w)
-        ## (dev_id, awg编号(看UI的awg core), index是wave编号;)
-        if len(wf)>0:
-            waveform_native = convert_awg_waveform(wf)
-            path = '/{:s}/awgs/{:d}/waveform/waves/{:d}'.format(hd.id,awg_index,0)
-            hd.daq.setVector(path, waveform_native)
-
-
-
 
 
 
@@ -623,12 +678,13 @@ class zurich_hd(object):
 
 
 class microwave_source(object):
-    def __init__(self,device_ip):
+    def __init__(self,device_ip,object_name):
         self.ip = device_ip
         self.freq = 0
         self.power = 0
         self.rm = pyvisa.ResourceManager()
         self.bringup()
+        self.object_name = object_name # mw, mw_r
 
     def init_setup(self):
         while self.get_output() == 0:
@@ -660,9 +716,15 @@ class microwave_source(object):
     def bringup(self):
         self.dev = self.rm.open_resource('TCPIP0::%s::inst0::INSTR' %self.ip)
         self.init_setup()
-        print('Bring up MW:%s'%self.ip)
+        logging.info('Bring up microwave_source:%s'%self.ip)
 
-
+    def refresh(self):
+        try:
+            while self.get_output() == 0:
+                self.set_output(1)
+        except:
+            self.bringup()
+            logging.info(mw.ip,'microwave_source bring up again.')
 
 
 class yokogawa_dc_source(object):

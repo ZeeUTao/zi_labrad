@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Created on 2020.09.09 20:57
 Controller for Zurich Instruments
-@author: , Huang Wenhui
+
+The daily experiments are implemented via various function (s21_scan, ramsey...)
+
+Created on 2020.09.09 20:57
+@author: Huang Wenhui, Tao Ziyu
 """
 
 from functools import wraps
@@ -21,7 +24,8 @@ import scipy.optimize
 # from microwave_source import microwave_source ## control microwave source by visa
 import pyvisa
 from importlib import reload
-from zurichHelper import check_device,stop_device,mpAwg_init
+from zurichHelper import _check_device,_stop_device,_mpAwg_init
+
 from conf import loadInfo
 from conf import qa,hd,mw,mw_r
 # qa,hd,mw,mw_r are instances
@@ -59,6 +63,21 @@ logging.basicConfig(format='%(asctime)s | %(name)s [%(levelname)s] : %(message)s
 """
 logging setting
 """
+
+
+def stop_device():
+    _stop_device(qa,hd)
+    return
+
+def check_device():
+    _check_device(mw,mw_r)
+    return
+
+def mpAwg_init(q,stats: int):
+    args = _mpAwg_init(q,stats,qa,hd,mw,mw_r)
+    return args    
+
+
 
 
 
