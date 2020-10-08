@@ -5,7 +5,8 @@ Controller for Zurich Instruments
 @author: , Huang Wenhui
 """
 
-
+from functools import wraps
+import logging # python standard module for logging facility
 import zhinst.utils ## create API object
 import textwrap ## to write sequencer's code
 import time ## show total time in experiments
@@ -20,8 +21,12 @@ import scipy.optimize
 # from microwave_source import microwave_source ## control microwave source by visa
 import pyvisa
 from importlib import reload
-from zurichHelper import init_device,check_device,stop_device,mpAwg_init,hd_send_waveform
-from conf import loadInfo,qa,hd,mw,mw_r
+from zurichHelper import check_device,stop_device,mpAwg_init
+from conf import loadInfo
+from conf import qa,hd,mw,mw_r
+# qa,hd,mw,mw_r are instances
+
+
 """
 import for pylabrad
 """
@@ -46,7 +51,17 @@ dv = cxn.data_vault
 # # specify the sample, in registry   
 # from BatchRun import ss
 # ss = None
-    
+
+
+logging.basicConfig(format='%(asctime)s | %(name)s [%(levelname)s] : %(message)s',
+                    level=logging.INFO
+                    )
+"""
+logging setting
+"""
+
+
+
 def loadQubits(sample, write_access=False):
     """Get local copies of the sample configuration stored in the registry.
     
@@ -81,8 +96,8 @@ def gridSweep(axes):
 def dataset_create(dv,dataset):
     """Create the dataset."""
     dv.cd(dataset.path, dataset.mkdir)
-    print(dataset.dependents)
-    print(dataset.independents)
+    logging.info(dataset.dependents)
+    logging.info(dataset.independents)
     dv.new(dataset.name, dataset.independents, dataset.dependents)
     if len(dataset.params):
         dv.add_parameters(tuple(dataset.params))
@@ -121,6 +136,25 @@ def Unit2num(a):
         return a[a.unit] 
 
 
+def mpfunc_decorator(func):
+    """
+    do some stuff before call the function (func) in our experiment
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        logger = logging.getLogger(func.__name__)
+        
+        check_device()
+        _t0_ = time.time()
+
+        start_ts = time.time()
+        result = func(*args, **kwargs)
+        
+        stop_device() ## stop all device running
+        logger.info('use time (s): %.2f '%(time.time()-_t0_))
+        return result
+    return wrapper
+
 
 def runQ(qubits,hd,qa):
     # generally for running multiqubits
@@ -134,16 +168,18 @@ def runQ(qubits,hd,qa):
     data = qa.get_data()
     return data
 
-
+@mpfunc_decorator
 def s21_scan(sample,measure=0,stats=1024,freq=ar[6.4:6.9:0.002,GHz],delay=0*ns,
     mw_power=None,bias=None,power=None,sb_freq=None,
     name='s21_scan',des='',back=False,noisy=True):
     """ 
+    s21 scanning
+
+    Args:
         sample: select experimental parameter from registry;
         stats: Number of Samples for one sweep point;
     """
-    check_device()
-    _t0_ = time.time()
+
     ## load parameters 
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
     q = qubits[measure]
@@ -234,14 +270,13 @@ def s21_scan(sample,measure=0,stats=1024,freq=ar[6.4:6.9:0.002,GHz],delay=0*ns,
         result_list.append(data_send)
         dv.add(data_send.copy()) ## save value to dataVault
 
-    stop_device() ## stop all device running
-    print('%r use time: %.2f s'%(name+des,time.time()-_t0_))
+
     if back:
         return result_list,q,w_hd,w_qa
 
 
 
-
+@mpfunc_decorator
 def spectroscopy(sample,measure=0,stats=1024,freq=ar[6.0:4.5:0.005,GHz],specLen=1*us,specAmp=0.1,sb_freq=0*Hz,
     bias=None,zpa=None,
     name='spectroscopy',des='',back=False,noisy=True):
@@ -249,9 +284,6 @@ def spectroscopy(sample,measure=0,stats=1024,freq=ar[6.0:4.5:0.005,GHz],specLen=
         sample: select experimental parameter from registry;
         stats: Number of Samples for one sweep point;
     """
-    check_device()
-    _t0_ = time.time()
-    ## load parameters 
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
     q = qubits[measure]
     q.channels = dict(q['channels'])
@@ -334,15 +366,12 @@ def spectroscopy(sample,measure=0,stats=1024,freq=ar[6.0:4.5:0.005,GHz],specLen=
         result_list.append(data_send)
         dv.add(data_send.copy()) ## save value to dataVault
 
-
-    stop_device() ## stop all device running
-    print('%r use time: %.2f s'%(name+des,time.time()-_t0_))
     if back:
         return result_list,q
 
 
 
-
+@mpfunc_decorator
 def rabihigh(sample,measure=0,stats=1024,piamp=ar[0:1:0.02],df=0*MHz,
     bias=None,zpa=None,
     name='rabihigh',des='',back=False,noisy=True):
@@ -350,9 +379,6 @@ def rabihigh(sample,measure=0,stats=1024,piamp=ar[0:1:0.02],df=0*MHz,
         sample: select experimental parameter from registry;
         stats: Number of Samples for one sweep point;
     """
-    check_device()
-    _t0_ = time.time()
-    ## load parameters 
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
     q = qubits[measure]
     q.channels = dict(q['channels'])
@@ -442,21 +468,15 @@ def rabihigh(sample,measure=0,stats=1024,piamp=ar[0:1:0.02],df=0*MHz,
         result_list.append(data_send)
         dv.add(data_send.copy()) ## save value to dataVault
 
-
-    stop_device() ## stop all device running
-    print('%r use time:%r'%(name+des,time.time()-_t0_))
     if back:
         return result_list,q
 
 
 
 
-
+@mpfunc_decorator
 def IQraw(sample,measure=0,stats=1024,update=True,analyze=False,
     name='IQ raw',des='',back=False,noisy=True):
-    check_device()
-    _t0_ = time.time()
-    ## load parameters 
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
     q = qubits[measure]
     Qb = Qubits[measure]
@@ -544,10 +564,6 @@ def IQraw(sample,measure=0,stats=1024,update=True,analyze=False,
         result_list = data_send
         dv.add(data_send.copy()) ## save value to dataVault
 
-
-    stop_device() ## stop all device running
-    print('%r use time:%r'%(name+des,time.time()-_t0_))
-
     Is0, Qs0, Is1, Qs1 = result_list.T
     if update:
         Qb['center|0>'] = [np.mean(Is0),np.mean(Qs0)]
@@ -575,16 +591,13 @@ def IQraw(sample,measure=0,stats=1024,update=True,analyze=False,
         return result,q
 
 
-
+@mpfunc_decorator
 def T1_visibility(sample,measure=0,stats=1024,delay=ar[0:12:0.5,us],
     zpa=None,bias=None,
     name='T1_visibility',des='',back=False,noisy=True):
     """ sample: select experimental parameter from registry;
         stats: Number of Samples for one sweep point;
     """
-    check_device()
-    _t0_ = time.time()
-    ## load parameters 
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
     q = qubits[measure]
     q.channels = dict(q['channels'])
@@ -682,8 +695,6 @@ def T1_visibility(sample,measure=0,stats=1024,delay=ar[0:12:0.5,us],
         dv.add(data_send.copy()) ## save value to dataVault
 
 
-    stop_device() ## stop all device running
-    print('%r use time:%r'%(name+des,time.time()-_t0_))
     if back:
         return result_list,q
 
@@ -691,16 +702,13 @@ def T1_visibility(sample,measure=0,stats=1024,delay=ar[0:12:0.5,us],
 
 
 
-
+@mpfunc_decorator
 def ramsey(sample,measure=0,stats=1024,delay=ar[0:10:0.4,us],
     repetition=1,df=0*MHz,fringeFreq=10*MHz,PHASE=0,bias=0.0,
     name='ramsey',des='',back=False,noisy=True):
     """ sample: select experimental parameter from registry;
         stats: Number of Samples for one sweep point;
     """
-    check_device()
-    _t0_ = time.time()
-    ## load parameters 
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
     q = qubits[measure]
     q.channels = dict(q['channels'])
@@ -787,16 +795,12 @@ def ramsey(sample,measure=0,stats=1024,delay=ar[0:10:0.4,us],
             print(', '.join([format(x,'.3f') for x in data_send])) ## show in scientific notation
         result_list.append(data_send)
         dv.add(data_send.copy()) ## save value to dataVault
-
-
-    stop_device() ## stop all device running
-    print('%r use time:%r'%(name+des,time.time()-_t0_))
     if back:
         return result_list,q
 
 
 
-
+@mpfunc_decorator
 def s21_dispersiveShift(sample,measure=0,stats=1024,freq=ar[6.4:6.9:0.002,GHz],delay=0*ns,
     mw_power=None,bias=None,power=None,sb_freq=None,
     name='s21_disperShift',des='',back=False,noisy=True):
@@ -804,9 +808,6 @@ def s21_dispersiveShift(sample,measure=0,stats=1024,freq=ar[6.4:6.9:0.002,GHz],d
         sample: select experimental parameter from registry;
         stats: Number of Samples for one sweep point;
     """
-    check_device()
-    _t0_ = time.time()
-    ## load parameters 
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
     q = qubits[measure]
     q.channels = dict(q['channels'])
@@ -913,9 +914,6 @@ def s21_dispersiveShift(sample,measure=0,stats=1024,freq=ar[6.4:6.9:0.002,GHz],d
             print(', '.join([format(x,'f') for x in data_send])) ## show in scientific notation
         result_list.append(data_send)
         dv.add(data_send.copy()) ## save value to dataVault
-
-    stop_device() ## stop all device running
-    print('%r use time: %.2f s'%(name+des,time.time()-_t0_))
     if back:
         return result_list,q,w_hd,w_qa
 
