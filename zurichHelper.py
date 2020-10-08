@@ -75,18 +75,18 @@ def mpAwg_init(q,stats):
     ## initialize waveforms and building 
     w_qa = waveform(all_length=qa.pulse_length_s,fs=1.8e9,origin=0) ## only readout pulse; 
     w_hd = waveform(all_length=q['bias_start'][s]+q['awgs_pulse_len'][s]+qa.pulse_length_s+q['bias_end'][s],fs=2.4e9,origin=-q['bias_start'][s]) ## beginning from bias start
-    q.dc = [w_hd.bias(amp=0.4,length=q['bias_start'][s]+q['awgs_pulse_len'][s]+qa.pulse_length_s+q['bias_end'][s])]
-    q.xy = [w_hd.square(amp=0.2),w_hd.square(amp=0.2)]
-    q.z = [w_hd.square(amp=0.3)]
-    q.r = [w_qa.square(amp=0),w_qa.square(amp=0)]
+    # q.dc = [w_hd.bias(amp=0.4,length=q['bias_start'][s]+q['awgs_pulse_len'][s]+qa.pulse_length_s+q['bias_end'][s])]
+    # q.xy = [w_hd.square(amp=0.2),w_hd.square(amp=0.2)]
+    # q.z = [w_hd.square(amp=0.3)]
+    # q.r = [w_qa.square(amp=0),w_qa.square(amp=0)]
     ## set hd's awgs waveforms
-    t0 = time.time()
-    hd.awg_builder(waveform=q.xy+q.dc+q.z, ports=[q.ch['xy_I'],q.ch['xy_Q'],q.ch['dc'],q.ch['z']])
-    print('hd-awg_builder:',time.time()-t0)
+    # t0 = time.time()
+    # hd.awg_builder(waveform=q.xy+q.dc+q.z, ports=[q.channels['xy_I'],q.channels['xy_Q'],q.channels['dc'],q.channels['z']])
+    # print('hd-awg_builder:',time.time()-t0)
     ## set qa's awgs waveforms
-    t0 = time.time()
-    qa.awg_builder(waveform = q.r)
-    print('qa-awg_builder:',time.time()-t0)
+    # t0 = time.time()
+    # qa.awg_builder(waveform = q.r)
+    # print('qa-awg_builder:',time.time()-t0)
     ### ----- finish ----- ###
     return w_qa,w_hd
 
@@ -134,6 +134,7 @@ class zurich_qa(object):
         self.qubit_frequency = [] # match channel number
         self.paths = [] # save result path 
         self.source = 7 ## 解调模式, 7=integration; 
+        self.waveform_length = 0 ## unit: sample number
 
         self.set_adc_trig_delay(0) ## delay after trigger; unit -> second
         self.set_pulse_length(0)   ## length of qa's awg, unit --> second
@@ -242,6 +243,9 @@ class zurich_qa(object):
         awg_program = awg_program.replace('$str0', str0)
         awg_program = awg_program.replace('$play_str', play_str)
         self.awg_upload_string(awg_program)
+        ## updata waveform lenght infomation
+        qainfo = self.daq.getList('/{:s}/awgs/0/waveform/waves/0'.format(self.id))
+        self.waveform_length = int(len(qainfo[0][1][0]['vector'])/len(waveform)) ## if qa use two channel wave;
 
     def awg_upload_string(self,awg_program, awg_index = 0): 
         """"写入波形并编译
@@ -283,6 +287,21 @@ class zurich_qa(object):
         self.daq.syncSetInt('/{:s}/awgs/0/enable'.format(self.device), 1)
         if self.noisy:
             print('\n AWG running. \n')
+
+    def send_waveform(self,waveform=[[0],[0]],check=False):
+        if check:
+            qainfo = self.daq.getList('/{:s}/awgs/0/waveform/waves/0'.format(self.id))
+            self.waveform_length = int(len(qainfo[0][1][0]['vector'])/2) ## qalen has double channel wave;
+        _n_ = self.waveform_length - len(waveform[0])
+        if _n_ >= 0:
+            waveform_add = [np.hstack((wf,int(_n_)*[0])) for wf in waveform] 
+            self.reload_waveform(waveform=waveform_add)
+        else:
+            print('New QA waveform(len=%r > %r)'%(len(waveform[0]),self.waveform_length))
+            t0 = time.time()
+            self.awg_builder(waveform=waveform)
+            print('QA-awg_builder:%.3f'%(time.time()-t0))
+
 
 
     ####--设置比特的读取频率sideband部分--####
@@ -442,6 +461,7 @@ class zurich_hd(object):
 
     def init_setup(self):
         self.pulse_length_s = 0
+        self.waveform_length = 0
         amplitude = 1.0
         exp_setting = [
             ['/%s/sigouts/*/on'               % (self.device), 1],
@@ -509,6 +529,8 @@ class zurich_hd(object):
         awg_program = awg_program.replace('$play_str', play_str)
         awg_program = awg_program.replace('_c0_', str(self.FS))
         self.awg_upload_string(awg_program, awg_index)
+        hdinfo = self.daq.getList('/{:s}/awgs/0/waveform/waves/0'.format(self.id))
+        self.waveform_length = int(len(hdinfo[0][1][0]['vector'])/2) ## qalen has double channel wave;
 
 
     def awg_upload_string(self,awg_program, awg_index = 0): 
@@ -545,6 +567,33 @@ class zurich_hd(object):
         print(len(waveform_native))
         path = '/{:s}/awgs/{:d}/waveform/waves/{:d}'.format(self.id,awg_index,index)
         self.daq.setVector(path, waveform_native)
+
+    def send_waveform(self,waveform=[[0],[0]],ports=[],check=False):
+        if check:
+            hdinfo = self.daq.getList('/{:s}/awgs/0/waveform/waves/0'.format(self.id))
+            self.waveform_length = int(len(hdinfo[0][1][0]['vector'])/2) ## qalen has double channel wave;
+        
+        wave_dict = dict(zip(ports,waveform)) ## add empty channels in wfs;
+        for k in range(8): 
+            if k+1 not in ports:
+                wave_dict[k+1]=np.zeros(len(waveform[0]))
+
+        _n_ = self.waveform_length - len(waveform[0])
+        if _n_ >= 0: ## if wave length enough to reload
+            waveform_add = [np.hstack((wave_dict[k+1],int(_n_)*[0])) for k in range(8)] ## fill [0] to hold wf len;
+            for k in range(4): ## reload wave following ports
+                if k*2+1 in ports or k*2+2 in ports:
+                    wf = [waveform_add[k*2],waveform_add[k*2+1]]
+                    waveform_native = convert_awg_waveform(wf)
+                    path = '/{:s}/awgs/{:d}/waveform/waves/{:d}'.format(self.id,k,0)
+                    self.daq.setVector(path, waveform_native)
+        else: ## if wave length too short, need building again;
+            print('New HD waveform(len=%r > %r)'%(len(waveform[0]),self.waveform_length))
+            waveform_send = [ _v_ for _v_ in wave_dict.values()]
+            ports_send = [ _p_ for _p_ in wave_dict.keys()]
+            t0 = time.time()
+            self.awg_builder(waveform=waveform_send,ports=ports_send)
+            print('HD-awg_builder:%.3f'%(time.time()-t0))
 
 
     def awg_open(self):
@@ -658,6 +707,9 @@ class yokogawa_dc_source(object):
         else:
             self.state = state
             self.dev.write(':outp:stat %d'%self.state)
+
+
+
 
 
 def convert_awg_waveform(wave_list):
