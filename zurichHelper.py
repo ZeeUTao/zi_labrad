@@ -110,12 +110,12 @@ def _stop_device(*servers:object):
     return
 
 
-def _mpAwg_init(q,stats: int,*servers):
+def _mpAwg_init(q: dict,*servers):
     """
     prepare and Returns waveforms
     Args:
         q (dict): contains value as parameter
-        stats: Number of Samples for one sweep point;
+        
 
         qa (object): zurich_qa instance
         hd (object): zurich_hd instance
@@ -132,7 +132,7 @@ def _mpAwg_init(q,stats: int,*servers):
 
     hd.pulse_length_s = 0 ## add hdawgs length with unit[s]
 
-    qa.result_samples = stats  ## sample number for one sweep point
+    qa.result_samples = q['stats']  ## int: sample number for one sweep point
     qa.set_adc_trig_delay(q['bias_start']+hd.pulse_length_s*s, q['readout_delay'])
     qa.set_pulse_length(q['readout_len'])
     qa.set_qubit_frequency([q.demod_freq])

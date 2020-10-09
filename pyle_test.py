@@ -17,6 +17,11 @@ V, mV, us, ns, GHz, MHz, dBm, rad = [Unit(s) for s in ('V', 'mV', 'us', 'ns', 'G
 from importlib import reload
 
 ar = st.r
+cxn=labrad.connect()
+dv = cxn.data_vault
+
+# specify the sample, in registry   
+ss = switchSession(cxn,user='hwh',session=None)  
 
 
     
@@ -127,9 +132,4 @@ def s21_scan(sample,freq = ar[1.:6.:0.01,GHz],power = st.r[-1:-30:1,dBm],zpa =0.
     return
 
 if __name__ == '__main__':
-    cxn=labrad.connect()
-    dv = cxn.data_vault
-    # specify the sample, in registry   
-    ss = switchSession(cxn,user='hwh',session=None)  
-    
     s21_scan(ss)

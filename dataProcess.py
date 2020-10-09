@@ -29,13 +29,31 @@ import sys
 # sys.path.insert(0,'M:\\')
 
 # labrad module
+import adjuster
 import labrad
 from pyle.workflow import switchSession
 # labrad module end
+import configparser
 
 
-_default_dir = r'M:\Experimental Data'
-_default_session = ['', 'hwh', '20200930_12Q_sample_C_test']
+
+def get_default_values():
+    conf = configparser.ConfigParser()
+    conf.read("zi_config.ini", encoding="utf-8")
+    config_dict = dict(conf.items('config'))
+
+    _default_dir = r'M:\Experimental Data'
+    _default_session = ['', 'hwh', '20200930_12Q_sample_C_test']
+
+    if '_default_dir' in config_dict:
+        _default_dir = config_dict['_default_dir']
+    if '_default_session' in config_dict:
+        _default_session = eval(config_dict['_default_session'])
+
+    return _default_dir,_default_session
+
+
+_default_dir,_default_session = get_default_values()
 
 encodings = [
     ('%','%p'),
@@ -139,6 +157,139 @@ def _connect_labrad():
     ss = switchSession(cxn,user=user,session=None)         
     return cxn,dv,ss
 
+def rotateData(data, center0, center1, labels=['|0>','|1>'], doPlot=True):
+    center = (center0+center1)/2.0
+    theta = np.angle(center0-center1)
+    I0s, Q0s, I1s, Q1s = data.T
+    sig0s = I0s + 1j*Q0s
+    sig1s = I1s + 1j*Q1s
+    if doPlot:
+        plt.figure(101)
+        plt.plot(I0s, Q0s, 'b.', label=labels[0])
+        plt.plot(I1s, Q1s, 'r.', label=labels[1])
+        plt.plot((np.real(center0), np.real(center1)),(np.imag(center0), np.imag(center1)),'ko--',markersize=10,lw=3)
+        plt.xlabel('I',size=20)
+        plt.ylabel('Q',size=20)
+        plt.xticks(size=20)
+        plt.yticks(size=20)
+        plt.legend()
+        plt.subplots_adjust(bottom=0.125, left=0.15)
+    sig0s = (sig0s-center)*np.exp(-1j*theta)
+    sig1s = (sig1s-center)*np.exp(-1j*theta)
+    return sig0s, sig1s
+
+def fit_double_gaussian(count,xs,plot=True,output=True,color='black',method='bfgs'):
+    def fitfunc(p,xs):
+        return np.abs(p[0])*np.exp(-(xs-p[1])**2/(2*p[2]**2)) + np.abs(p[3])*np.exp(-(xs-p[4])**2/(2*p[5]**2))
+
+    def errfunc(p):
+        x = count - fitfunc(p,xs)
+        return np.sum(x**2)
+    
+    xs_0 = xs[xs[:]>0]
+    xs_1 = xs[xs[:]<0]
+    count_0 = count[xs_1.shape[0]:]
+    count_1 = count[0:xs_1.shape[0]]
+    # out = minimize(errfunc,(np.max(count_0),np.mean(xs_0),(np.max(xs_0)-np.mean(xs_0))/2.0,np.max(count_1),np.mean(xs_1),(np.max(xs_1)-np.mean(xs_1))/2.0),
+    # method = 'TNC', bounds = ((0.,6000.),(min(xs_1)/2.,max(xs_0)),(2.,max(xs_0)),(0.,6000.),(min(xs_1),max(xs_0)/2.),(2.,max(xs_0))))
+    
+    x0 = (np.max(count_0),np.mean(xs_0),(np.max(xs_0)-np.mean(xs_0))/2.0,np.max(count_1),np.mean(xs_1),(np.max(xs_1)-np.mean(xs_1))/2.0)
+    bnds = ((0.0,6000.0),(0.0,max(xs_0)),(4.0,max(xs_0)),(0.0,6000.0),(min(xs_1),0.0),(4.0,max(xs_0)))
+    # print x0
+    # print bnds
+    if method == 'bfgs':
+        res = scipy.optimize.fmin_l_bfgs_b(errfunc,x0,bounds=bnds,approx_grad=True)[0]
+    elif method == 'tnc':
+        res = scipy.optimize.fmin_tnc(errfunc,x0,bounds=bnds,approx_grad=True)[0]
+    else:
+        res = scipy.optimize.fmin_slsqp(errfunc,x0,bounds=bnds)
+        
+    p = res
+    if output:
+        print('Amp|0>: ',np.abs(p[0]),'mean|0>: ',p[1],'deviation|0>: ',np.abs(p[2]))
+        print('Amp|1>: ',np.abs(p[3]),'mean|1>: ',p[4],'deviation|1>: ',np.abs(p[5]))
+    if plot:
+        plt.plot(xs,fitfunc(p,xs),color=color,linewidth=2)
+        
+    return p
+
+def anaSignal(sig0s, sig1s, stats, labels=['|0>','|1>'], fignum=[102, 103], debugFlag=False):
+    stats0 = np.size(sig0s)
+    stats1 = np.size(sig1s)
+
+    if stats1 != stats:
+        print('warning!!!!!!!!!!!!!!!!')
+        print(stats0, stats1)
+
+    plt.figure(fignum[0])
+    plt.subplot(311)
+    plt.plot(np.real(sig0s), np.imag(sig0s), 'bo', label=labels[0])
+    plt.plot(np.real(sig1s), np.imag(sig1s), 'ro', label=labels[1],alpha=0.5)
+    plt.legend()
+    
+    plt.subplot(312)
+    sig_min = np.min([np.min(np.real(sig0s)), np.min(np.real(sig1s))])
+    sig_max = np.max([np.max(np.real(sig0s)), np.max(np.real(sig1s))])
+    counts0,positions0,patch0 = plt.hist(np.real(sig0s),range=(sig_min, sig_max),bins=50,alpha=0.5,label=labels[0])
+    counts1,positions1,patch1 = plt.hist(np.real(sig1s),range=(sig_min, sig_max),bins=50,alpha=0.5,label=labels[1])
+    positions0 = (positions0[0:-1] + positions0[1:])/2.0
+    positions1 = (positions1[0:-1] + positions1[1:])/2.0
+    
+    result0 = fit_double_gaussian(counts0,positions0,color='blue')
+    result1 = fit_double_gaussian(counts1,positions1,color='red')
+    separation = result0[1]-result1[4]
+    deviation0 = result0[2]
+    deviation1 = result1[5]
+    p00 = result0[:3]
+    p01 = result0[3:]
+    p11 = result1[3:]
+    p10 = result1[:3]
+    print('Separation: %.2f, SNR: %.2f'%(p00[1]-p11[1],(p00[1]-p11[1])/(p00[2]+p11[2])))
+    def gaussianFunc(p,xs):
+        return np.abs(p[0])*np.exp(-(xs-p[1])**2/(2*p[2]**2))
+    def fitFunc(p,xs):
+        return np.abs(p[0])*np.exp(-(xs-p[1])**2/(2*p[2]**2)) + np.abs(p[3])*np.exp(-(xs-p[4])**2/(2*p[5]**2))
+    
+    c0 = np.array([np.sum(counts0[:idx0]) for idx0 in range(len(positions0))])
+    c1 = np.array([np.sum(counts1[:idx0]) for idx0 in range(len(positions0))])
+    vis = np.array([-np.sum(counts0[:idx0])+np.sum(counts1[:idx0]) for idx0 in range(len(positions0))])
+    idx = np.argmax(vis)
+    vism = max(vis/float(stats))
+    print('sepPoint: %.2f, Visibility: %.2f'%(positions0[idx], vism))
+    
+    plt.subplot(313)
+    plt.plot(positions0, gaussianFunc(p00, positions0), 'b-', label=labels[0])
+    plt.plot(positions0, gaussianFunc(p11, positions0), 'r-', label=labels[1])
+    plt.fill_between(positions0, gaussianFunc(p00,positions0), where=(positions0<=positions0[idx-1]), color='b', alpha=0.5)
+    plt.fill_between(positions0, gaussianFunc(p11,positions0), where=(positions0>=positions0[idx-1]), color='r', alpha=0.5)
+    
+    plt.figure(fignum[1])
+    plt.plot(positions0, c0/float(stats), 'b-', lw=2,label='|0>')
+    plt.plot(positions0, c1/float(stats), 'r-', lw=2,label='|1>')
+    plt.plot(positions0, vis/float(stats), 'k-', lw=2)
+    # plt.plot(positions0, vis/float(stats), 'r-', lw=1)
+    plt.xlabel('Integration Axis', size=20)
+    plt.ylabel('Visibility', size=20)
+    plt.xticks(size=20)
+    plt.yticks(size=20)
+    plt.title('Maximum Visibility: %.2f'%np.max(vis/float(stats)))
+    plt.subplots_adjust(bottom=0.125, left=0.18)
+
+    separationError0 = np.sum(gaussianFunc(p00,positions0[:idx]))/np.sum(fitFunc(result0,positions0)) #calculate separation error
+    separationError1 = np.sum(gaussianFunc(p11,positions0[idx:]))/np.sum(fitFunc(result1,positions0))
+    Error0 = np.sum(counts0[1:idx])/np.float(stats)
+    Error1 = np.sum(counts1[idx:])/np.float(stats)
+    stateErrorp0 = Error0 - separationError0
+    stateErrorp1 = Error1 - separationError1
+    print('stateError|0>: %.1f%%, stateError|1>: %.1f%%'%(100*stateErrorp0, 100*stateErrorp1))
+    print('Error|0>: %.1f%%, Error|1>: %.1f%%'%(100*Error0, 100*Error1))
+    anaData = [separation, deviation0, deviation1, separationError0, separationError1, stateErrorp0, stateErrorp1, vism, positions0[idx], np.abs(positions0[idx]-result0[1])]
+    
+    if debugFlag:
+        print(anaData)
+        pdb.set_trace()
+    return anaData 
+
 
 def plot_label(xlabel,ylabel,size=15,size2 =20):
     plt.xlabel(xlabel,size=size2)
@@ -189,7 +340,36 @@ def fitT1(dh,idx,dv=None,trange=40,data=None,doPlot=True,fig=None,title=''):
         plt.plot(data[:,0],data[:,-1],'ro')
     plt.tight_layout()
     return p[0], 1.0/p[1]       
-    
+
+
+def updateIQraw2(dh,idx,Qb,dv=None,update=True,analyze=False):
+    data = dh.getDataset(idx,dv)
+    Is0,Qs0,Is1,Qs1 =data.T
+    stats = len(Is0)
+    if update:
+        Qb['center|0>'] = [np.mean(Is0),np.mean(Qs0)]
+        Qb['center|1>'] = [np.mean(Is1),np.mean(Qs1)]
+        adjuster.IQ_center(qubit=Qb, data=data)
+
+    center0 = Qb['center|0>'][0] + 1j*Qb['center|0>'][1]
+    center1 = Qb['center|1>'][0] + 1j*Qb['center|1>'][1]
+
+    if analyze:
+        sig0s, sig1s = rotateData(data, center0, center1,doPlot=True)
+        result = anaSignal(sig0s, sig1s, stats, labels=['|0>','|1>'], fignum=[102, 103])
+
+        plt.figure(101)
+        theta = np.linspace(0, 2*np.pi, 100)
+        for idx in range(3):
+            plt.plot(np.real(center0+(idx+1)*result[1]*np.exp(1j*theta)),np.imag(center0+(idx+1)*result[1]*np.exp(1j*theta)),'g-',lw=2)
+            plt.plot(np.real(center1+(idx+1)*result[2]*np.exp(1j*theta)),np.imag(center1+(idx+1)*result[2]*np.exp(1j*theta)),'k-',lw=2)
+        sepPoint = center0+np.cos(np.angle(center1-center0))*result[-1]+1j*np.sin(np.angle(center1-center0))*result[-1]
+        sepPoint1 = sepPoint+np.cos(np.angle(center1-center0)+np.pi/2)*50.0+1j*np.sin(np.angle(center1-center0)+np.pi/2)*50.0
+        sepPoint2 = sepPoint+np.cos(np.angle(center1-center0)-np.pi/2)*50.0+1j*np.sin(np.angle(center1-center0)-np.pi/2)*50.0
+        plt.plot(np.real(np.array([sepPoint1,sepPoint,sepPoint2])), np.imag(np.array([sepPoint1,sepPoint,sepPoint2])), 'g-', lw=2)
+
+    return
+
 def plotIQraw(dh,idx,dv=None,level=2):
     """level (int): IQ points with N-level system (default 2, qubit)
     """

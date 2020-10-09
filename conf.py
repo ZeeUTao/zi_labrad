@@ -41,9 +41,9 @@ def bringup_device(modes=[1,2,3,4]):
         if m == 2:
             hd = zurich_hd(dev.zi_hd_id)
         if m == 3:
-            mw = microwave_source(dev.microwave_source_xy)
+            mw = microwave_source(dev.microwave_source_xy,'mw')
         if m == 4:
-            mw_r = microwave_source(dev.microwave_source_readout)
+            mw_r = microwave_source(dev.microwave_source_readout,'mw_r')
 
 
 

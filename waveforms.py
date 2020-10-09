@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Created on 2020.10.06
 waveform script
+
+Created on 2020.10.06
 @author: Tao Ziyu
 """
 
@@ -92,7 +93,7 @@ class waveform(object):
     def func2array(self,envelopes):
         start = envelopes.start
         end = envelopes.end
-        if end > self.tlist[-1]: 
+        if end > self.len: 
             raise Exception("Waveform too long!")
         if start < self.origin:
             raise Exception("Waveform start out of range")
@@ -130,7 +131,7 @@ class waveform(object):
     @convertUnits(start='s',end='s',freq='Hz',length='s')
     def sine(self,amp=0.1,phase=0.0,start=0,end=None,freq=10e6,length=100e-9):
         if end is None: end = start + length
-        timeFunc = lambda t: amp*np.cos(2*pi*freq*(t-start)+phase)*(start<=t<end)
+        timeFunc = lambda t: amp*np.sin(2*pi*freq*(t-start)+phase)*(start<=t<end)
         envelopes = Envelope(timeFunc,None,start,end)
         return self.func2array(envelopes)
     
@@ -140,3 +141,36 @@ class waveform(object):
         timeFunc = lambda t: amp*np.cos(2*pi*freq*(t-start)+phase)*(start<=t<end)
         envelopes = Envelope(timeFunc,None,start,end)
         return self.func2array(envelopes)
+
+
+
+    @convertUnits(start='s',end='s',amp=None,length='s')
+    def square(self,start=50e-9,end=None,amp=1.0,length=100e-9):
+        if end is None: end = start + length
+        timeFunc = lambda t: amp*(start<=t<end)
+        envelopes = Envelope(timeFunc,None,start,end)
+        return self.func2array(envelopes)
+
+
+
+@convertUnits(start='s',end='s',freq='Hz',length='s')
+def sine(amp=0.1,phase=0.0,start=0,end=None,freq=10e6,length=100e-9):
+    if end is None: end = start + length
+    timeFunc = lambda t: amp*np.sin(2*pi*freq*(t-start)+phase)*(start<=t<end)
+    envelopes = Envelope(timeFunc,None,start,end)
+    return envelopes
+
+@convertUnits(start='s',end='s',freq='Hz',length='s')
+def cosine(amp=0.1,phase=0.0,start=0,end=None,freq=10e6,length=100e-9):
+    if end is None: end = start + length
+    timeFunc = lambda t: amp*np.cos(2*pi*freq*(t-start)+phase)*(start<=t<end)
+    envelopes = Envelope(timeFunc,None,start,end)
+    return envelopes
+
+
+@convertUnits(start='s',end='s',amp=None,length='s')
+def square(start=50e-9,end=None,amp=1.0,length=100e-9):
+    if end is None: end = start + length
+    timeFunc = lambda t: amp*(start<=t<end)
+    envelopes = Envelope(timeFunc,None,start,end)
+    return envelopes
