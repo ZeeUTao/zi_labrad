@@ -93,10 +93,10 @@ class waveform(object):
     def func2array(self,envelopes,fs=None):
         start = envelopes.start
         end = envelopes.end
-        if end > self.len: 
-            raise Exception("Waveform too long!")
-        if start < self.origin:
-            raise Exception("Waveform start out of range")
+        # if end > self.len: 
+            # raise Exception("Waveform too long!")
+        # if start < self.origin:
+            # raise Exception("Waveform start out of range")
         if fs == None:
             fs = self.fs
         pulse = [envelopes(t) for t in np.arange(start,end,1/fs)]
@@ -181,8 +181,8 @@ def square(start=50e-9,end=None,amp=1.0,length=100e-9):
 def readout(amp=0.1,phase=0.0,start=0,end=None,freq=10e6,length=100e-9):
     if end is None: end = start + length
     timeFunc1 = lambda t: amp*np.cos(2*pi*freq*(t-start)+phase)*(start<=t<end)
-    env1 = Envelope(timeFunc,None,start,end)
+    env1 = Envelope(timeFunc1,None,start,end)
     timeFunc2 = lambda t: amp*np.sin(2*pi*freq*(t-start)+phase)*(start<=t<end)
-    env2 = Envelope(timeFunc,None,start,end)
+    env2 = Envelope(timeFunc2,None,start,end)
     return env1,env2
 

@@ -142,7 +142,10 @@ def runQubits(qubits,exp_devices):
         ## 结束hd脉冲,开始设置读取部分
         # w_qa,w_hd = _mpAwg_init(q,qa,hd,mw,mw_r)
         if 'dc' not in q.keys():
-            q.dc = [waveforms.square(amp=q['bias'],start=w_hd.origin,end=w_hd.tlist[-1])]
+            q.dc = [waveforms.square(amp=q['bias'],
+                    start= -q['bias_start'],
+                    end= q['bias_end']['s']+q['experiment_length'])
+                    ]
         
         if 'do_readout' in q.keys():
             if 'r' not in q.keys():
@@ -155,7 +158,7 @@ def runQubits(qubits,exp_devices):
 
         q.xy_array = [wfs.func2array((q.xy)[i],fs=hd.FS) for i in [0,1]]
         q.z_array = [wfs.func2array(q.z[0],fs=hd.FS)]
-        q.dc_array = [wfs.func2array([q.dc],fs=hd.FS)]
+        q.dc_array = [wfs.func2array(q.dc[0],fs=hd.FS)]
         
         qbs_waveform += q.xy_array+q.dc_array+q.z_array
         qbs_ports += [q.channels['xy_I'],q.channels['xy_Q'],q.channels['dc'],q.channels['z']]
@@ -172,6 +175,7 @@ def runQubits(qubits,exp_devices):
     mw.set_power(q['xy_mw_power'])
     
     hd.send_waveform(waveform=qbs_waveform, ports=qbs_ports)
+    print(qbs_r_array)
     qa.send_waveform(waveform=qbs_r_array)
     ## start to run experiment
     hd.awg_open()

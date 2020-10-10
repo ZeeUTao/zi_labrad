@@ -85,17 +85,17 @@ logging setting
 """
 
 def RunAllExp(*args):
-    qa,hd,mw,mw_r = exp_devices
+    qa,hd,mw,mw_r = exp_devices[:4]
     RunAllExperiment(exp_devices,*args)
     return
 
 def stop_device():
-    qa,hd,mw,mw_r = exp_devices
+    qa,hd,mw,mw_r = exp_devices[:4]
     _stop_device(qa,hd)
     return
 
 def check_device():
-    qa,hd,mw,mw_r = exp_devices
+    qa,hd,mw,mw_r = exp_devices[:4]
     _check_device(mw,mw_r)
     return
 
