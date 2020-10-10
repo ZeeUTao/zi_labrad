@@ -1,9 +1,9 @@
 import numpy as np
 
-import pyle
-from pyle.pipeline import pmap, returnValue
-from pyle.util import getch
-from pyle.datasaver import Dataset
+import zilabrad.pyle
+from zilabrad.pyle.pipeline import pmap, returnValue
+from zilabrad.pyle.util import getch
+from zilabrad.pyle.datasaver import Dataset
 
 
 def prepDataset(sample, name, axes=None, dependents=None, measure=None, kw=None):

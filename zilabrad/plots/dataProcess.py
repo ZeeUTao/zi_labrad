@@ -26,34 +26,18 @@ from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.optimize import leastsq, curve_fit
 import sys
-# sys.path.insert(0,'M:\\')
 
 # labrad module
-import adjuster
+import zilabrad.plots.adjuster
 import labrad
-from pyle.workflow import switchSession
+from zilabrad.pyle.workflow import switchSession
 # labrad module end
 import configparser
 
 
 
-def get_default_values():
-    conf = configparser.ConfigParser()
-    conf.read("zi_config.ini", encoding="utf-8")
-    config_dict = dict(conf.items('config'))
+_default_session = ['', 'hwh', '20200930_12Q_sample_C_test']
 
-    _default_dir = r'M:\Experimental Data'
-    _default_session = ['', 'hwh', '20200930_12Q_sample_C_test']
-
-    if '_default_dir' in config_dict:
-        _default_dir = config_dict['_default_dir']
-    if '_default_session' in config_dict:
-        _default_session = eval(config_dict['_default_session'])
-
-    return _default_dir,_default_session
-
-
-_default_dir,_default_session = get_default_values()
 
 encodings = [
     ('%','%p'),
@@ -88,21 +72,22 @@ class datahelp(object):
     helper to get data from specified path
     """
     def __init__(self,path = None,session=None):
+        self.dir = r'M:\Experimental Data'
         self.path = path
-        self.session = session
-        
-        if self.session is None:
+
+        if session is None:
             self.session = _default_session
-            
+        else:
+            self.session = session
             
         if self.path is None:
-            _path = _default_dir
+            _path = self.dir
             for sub in self.session:
                 if sub is '': continue
                 _path = os.path.join(_path,sub+r'.dir')
             self.path = _path
             
-        
+            
     @staticmethod
     def listnames(path,ext='.csv'):
         """

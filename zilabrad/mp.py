@@ -21,27 +21,28 @@ import scipy.optimize
 
 
 from importlib import reload
-from zurichHelper import _check_device,_stop_device
-from qubitServer import loadQubits,dataset_create,RunAllExperiment
-from qubitServer import runQubits as runQ
 
-from conf import loadInfo
-from conf import qa,hd,mw,mw_r
+from zilabrad.instrument.zurichHelper import _check_device,_stop_device
+from zilabrad.instrument.qubitServer import loadQubits,dataset_create,RunAllExperiment
+from zilabrad.instrument.qubitServer import runQubits as runQ
+
+# from conf import loadInfo
+# from conf import qa,hd,mw,mw_r
 # qa,hd,mw,mw_r are objects (instance)
 
-import adjuster
-import waveforms
-from dataProcess import datahelp
-import dataProcess
+import zilabrad.plots.adjuster
+import zilabrad.instrument.waveforms
+from zilabrad.plots.dataProcess import datahelp
+import zilabrad.plots.dataProcess
 """
 import for pylabrad
 """
-from pyle import sweeps
+from zilabrad.pyle import sweeps
 
 import time
 import numpy as np
-from pyle.util import sweeptools as st
-from pyle.sweeps import checkAbort
+from zilabrad.pyle.util import sweeptools as st
+from zilabrad.pyle.sweeps import checkAbort
 from labrad.units import Unit,Value
 
 _unitSpace = ('V','mV','us','ns','s','GHz','MHz','kHz','Hz','dBm','rad','None')
@@ -50,6 +51,7 @@ ar = st.r
 
 
 datahelper = datahelp()
+
 
 """
 end import for pylabrad 
@@ -73,7 +75,7 @@ def _standard_exps(ss,funcs = _bringup_experiment):
 
 plt.ion()
 
-exp_devices = qa,hd,mw,mw_r
+exp_devices = {}
 
 logging.basicConfig(format='%(asctime)s | %(name)s [%(levelname)s] : %(message)s',
                     level=logging.INFO
@@ -541,7 +543,8 @@ def IQraw(sample,measure=0,stats=1024,update=False,analyze=False,reps=1,
  
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
     collect,raw = True,True
-
+    
+    datahelper.session=sample._dir
     RunAllExp(runSweeper,axes_scans,collect,raw)
     if update:
         dataProcess.updateIQraw2(dh=datahelper,idx=-1,Qb=q,dv=None,update=update,analyze=analyze)

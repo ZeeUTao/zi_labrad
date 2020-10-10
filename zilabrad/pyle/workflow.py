@@ -22,7 +22,7 @@ from labrad.units import Unit
 us, ns, V, mV, GHz, dBm = [Unit(s) for s in ('us', 'ns', 'V', 'mV', 'GHz', 'dBm')]
 
 
-from pyle import registry
+from zilabrad.pyle import registry
 
 
 # default set of keys that will be set in the registry for each newly-created qubit

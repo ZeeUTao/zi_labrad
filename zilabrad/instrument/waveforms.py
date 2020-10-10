@@ -8,7 +8,7 @@ Created on 2020.10.06
 
 import numpy as np
 from math import ceil,pi
-from pyle.envelopes import Envelope
+from zilabrad.pyle.envelopes import Envelope
 
 import inspect
 import functools
