@@ -28,7 +28,7 @@ import numpy as np
 from scipy.special import erf
 import matplotlib.pyplot as plt
 
-from pyle.util import convertUnits
+from zilabrad.pyle.util import convertUnits
 
 
 class Envelope(object):

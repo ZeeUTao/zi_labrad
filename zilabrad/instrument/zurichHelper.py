@@ -1,113 +1,168 @@
+# -*- coding: utf-8 -*-
+"""
+Helpers for Zurich Instruments
+
+including classes for AWG devices, microwave sources
+"""
+
+import logging
 import zhinst.utils ## create API object
 import textwrap ## to write sequencer's code
 import time ## show total time in experiments
 import matplotlib.pyplot as plt ## give picture
 import numpy as np 
-# from numpy import pi
 from math import ceil,pi
-from pyle.registry import RegistryWrapper
+
+from zilabrad.pyle.registry import RegistryWrapper
 import labrad
 from labrad.units import Unit,Value
 _unitSpace = ('V', 'mV', 'us', 'ns','s', 'GHz', 'MHz','kHz','Hz', 'dBm', 'rad','None')
 V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l  = [Unit(s) for s in _unitSpace]
 import pyvisa
 
-from conf import loadInfo,qa,hd,mw,mw_r
-from waveforms import convertUnits,waveform
+from zilabrad.instrument.waveforms import convertUnits,waveform
+
+logging.basicConfig(format='%(asctime)s | %(name)s [%(levelname)s] : %(message)s',
+                    level=logging.INFO
+                    )
 
 
 
-def init_device(back=False):
-    """  initialize all device setup; 
+def _call_object_func(server: object,_name_eval: dict,command: None or str = None)->bool:
+    """  call an object accroding to a dict
+
+    Example:
+        _name_eval = {
+        'zurich_qa':'init_setup'}
+        
+        _call_object_func(qa,_name_eval) # qa is instance of zurich_qa
+        equals to: qa.init_setup()
+
+    Returns:
+        False if server name not in _name_eval.keys()
+        else: True
     """
-    qa.init_setup()
-    hd.init_setup()
-    mw.init_setup()
-    mw_r.init_setup()
-    # yoko.init_setup()
+    name = server.__class__.__name__
+
+    if command == None:
+        command = r'server.' + _name_eval[name] + '()'
+    
+    if name not in _name_eval.keys():
+        logging.info("some of args of server:object (qa,hd...) invalid")
+        return False
+    else:
+        try:
+            eval(command)
+            logging.info(name+" successfully call %s",_name_eval[name])
+        except:
+            logging.warning(name+"cannot call %s",_name_eval[name])
+        return True
 
 
-def check_device():
+
+def _init_device(*servers:object):
+    """  initialize all server setup; 
+    Example: _init_device(qa,hd,mw,mw_r)
     """
-    Make sure all device in work before runQ
+    _name_eval = {
+    'zurich_qa':'init_setup',
+    'zurich_hd':'init_setup',
+    'microwave_source':'init_setup',
+    }
+
+    for server in servers:
+        _call_object_func(server,_name_eval)
+    return
+
+
+def _check_device(*servers:object):
     """
-    try:
-        while mw.get_output()==0:
-            mw.set_output(1)
-    except:
-        mw.bringup()
-        print('MW bring up again.')
-    try:
-        while mw_r.get_output()==0:
-            mw_r.set_output(1)
-    except:
-        mw_r.bringup()
-        print('MW_r bring up again.')
+    Make sure all device in work before runQ, or bringup again
+    Args:
+        *servers: one or more server, server is an instance
+    Example: 
+        _check_device(mw,mw_r)
+        mw,mw_r are instances of microwave_source
+    """
+    _name_eval = {
+    'microwave_source':'refresh',
+    }
+    for server in servers:
+        _call_object_func(server,_name_eval)
+    return
 
 
-def stop_device():
+def _stop_device(*servers:object):
     """  close all device; 
+    Args:
+        *servers: one or more server, server is an instance
+    Example: 
+        _stop_device(qa,hd)
+        qa,hd: instances of zurich_qa and zurich_hd
     """
-    qa.stop_subscribe()
-    hd.awg_close_all()
-    # mw.set_output(False)
-    # mw_r.set_output(False)
-    # yoko.set_off()
+    _name_eval = {
+    'zurich_qa':'stop_subscribe',
+    'zurich_hd':'awg_close_all',
+    }
+
+    for server in servers:
+        _call_object_func(server,_name_eval)
+    return
 
 
-def mpAwg_init(q,stats):
+def _mpAwg_init(q: dict,*servers):
     """
-    stats: Number of Samples for one sweep point;
-    get commonly used value
+    prepare and Returns waveforms
+    Args:
+        q (dict): contains value as parameter
+        
+
+        qa (object): zurich_qa instance
+        hd (object): zurich_hd instance
+        mw,mw_r (object): microwave_source instance
+    
+    Returns:
+        w_qa (object): waveform instance for qa
+        w_hd (object): waveform instance for hd
+
+    TODO: better way to generate w_qa, w_hd
+    try to create features in the exsiting class but not create a new function
     """
+    qa,hd,mw,mw_r = servers[:4]
+
     hd.pulse_length_s = 0 ## add hdawgs length with unit[s]
-    qa.result_samples = stats  ## sample number for one sweep point
+
+    qa.result_samples = q['stats']  ## int: sample number for one sweep point
     qa.set_adc_trig_delay(q['bias_start']+hd.pulse_length_s*s, q['readout_delay'])
     qa.set_pulse_length(q['readout_len'])
     qa.set_qubit_frequency([q.demod_freq])
     qa.set_subscribe(source=7)
+
     ## set 'microwave source [readout]'
     mw_r.set_power(q['readout_mw_power'])
     mw_r.set_freq(q['readout_mw_fc'])
     ## set 'microwave source [XY]'
     mw.set_power(q['xy_mw_power'])
     mw.set_freq(q['xy_mw_fc'])
-    ## initialize waveforms and building 
+
     w_qa = waveform(all_length=qa.pulse_length_s,fs=1.8e9,origin=0) ## only readout pulse; 
-    w_hd = waveform(all_length=q['bias_start'][s]+q['awgs_pulse_len'][s]+qa.pulse_length_s+q['bias_end'][s],fs=2.4e9,origin=-q['bias_start'][s]) ## beginning from bias start
-    q.dc = [w_hd.bias(amp=0.4,length=q['bias_start'][s]+q['awgs_pulse_len'][s]+qa.pulse_length_s+q['bias_end'][s])]
-    q.xy = [w_hd.square(amp=0.2),w_hd.square(amp=0.2)]
-    q.z = [w_hd.square(amp=0.3)]
-    q.r = [w_qa.square(amp=0),w_qa.square(amp=0)]
+    w_hd = waveform(all_length=q['bias_start'][s]+q['awgs_pulse_len'][s]+qa.pulse_length_s+q['bias_end'][s],fs=2.4e9,origin=-q['bias_start'][s])
+    ## initialize waveforms and building 
+
+    # q.dc = [w_hd.bias(amp=0.4,length=q['bias_start'][s]+q['awgs_pulse_len'][s]+qa.pulse_length_s+q['bias_end'][s])]
+    # q.xy = [w_hd.square(amp=0.2),w_hd.square(amp=0.2)]
+    # q.z = [w_hd.square(amp=0.3)]
+    # q.r = [w_qa.square(amp=0),w_qa.square(amp=0)]
     ## set hd's awgs waveforms
-    t0 = time.time()
-    hd.awg_builder(waveform=q.xy+q.dc+q.z, ports=[q.ch['xy_I'],q.ch['xy_Q'],q.ch['dc'],q.ch['z']])
-    print('hd-awg_builder:',time.time()-t0)
+    # t0 = time.time()
+    # hd.awg_builder(waveform=q.xy+q.dc+q.z, ports=[q.channels['xy_I'],q.channels['xy_Q'],q.channels['dc'],q.channels['z']])
+    # print('hd-awg_builder:',time.time()-t0)
     ## set qa's awgs waveforms
-    t0 = time.time()
-    qa.awg_builder(waveform = q.r)
-    print('qa-awg_builder:',time.time()-t0)
+    # t0 = time.time()
+    # qa.awg_builder(waveform = q.r)
+    # print('qa-awg_builder:',time.time()-t0)
     ### ----- finish ----- ###
     return w_qa,w_hd
-
-
-
-def hd_send_waveform(waveforms,ports=[]):
-    if len(ports) == 0:
-        ports = np.arange(len(waveforms))+1 ## with 1,2,3,...
-    for awg_index in range(4):
-        wf=[]
-        for p,w in zip(ports,waveforms):
-            if p in [awg_index*2+1,awg_index*2+2]:
-                wf.append(w)
-        ## (dev_id, awg编号(看UI的awg core), index是wave编号;)
-        if len(wf)>0:
-            waveform_native = convert_awg_waveform(wf)
-            path = '/{:s}/awgs/{:d}/waveform/waves/{:d}'.format(hd.id,awg_index,0)
-            hd.daq.setVector(path, waveform_native)
-
-
-
 
 
 
@@ -134,6 +189,7 @@ class zurich_qa(object):
         self.qubit_frequency = [] # match channel number
         self.paths = [] # save result path 
         self.source = 7 ## 解调模式, 7=integration; 
+        self.waveform_length = 0 ## unit: sample number
 
         self.set_adc_trig_delay(0) ## delay after trigger; unit -> second
         self.set_pulse_length(0)   ## length of qa's awg, unit --> second
@@ -242,6 +298,9 @@ class zurich_qa(object):
         awg_program = awg_program.replace('$str0', str0)
         awg_program = awg_program.replace('$play_str', play_str)
         self.awg_upload_string(awg_program)
+        ## updata waveform lenght infomation
+        qainfo = self.daq.getList('/{:s}/awgs/0/waveform/waves/0'.format(self.id))
+        self.waveform_length = int(len(qainfo[0][1][0]['vector'])/len(waveform)) ## if qa use two channel wave;
 
     def awg_upload_string(self,awg_program, awg_index = 0): 
         """"写入波形并编译
@@ -283,6 +342,21 @@ class zurich_qa(object):
         self.daq.syncSetInt('/{:s}/awgs/0/enable'.format(self.device), 1)
         if self.noisy:
             print('\n AWG running. \n')
+
+    def send_waveform(self,waveform=[[0],[0]],check=False):
+        if check:
+            qainfo = self.daq.getList('/{:s}/awgs/0/waveform/waves/0'.format(self.id))
+            self.waveform_length = int(len(qainfo[0][1][0]['vector'])/2) ## qalen has double channel wave;
+        _n_ = self.waveform_length - len(waveform[0])
+        if _n_ >= 0:
+            waveform_add = [np.hstack((wf,int(_n_)*[0])) for wf in waveform] 
+            self.reload_waveform(waveform=waveform_add)
+        else:
+            print('New QA waveform(len=%r > %r)'%(len(waveform[0]),self.waveform_length))
+            t0 = time.time()
+            self.awg_builder(waveform=waveform)
+            print('QA-awg_builder:%.3f'%(time.time()-t0))
+
 
 
     ####--设置比特的读取频率sideband部分--####
@@ -442,6 +516,7 @@ class zurich_hd(object):
 
     def init_setup(self):
         self.pulse_length_s = 0
+        self.waveform_length = 0
         amplitude = 1.0
         exp_setting = [
             ['/%s/sigouts/*/on'               % (self.device), 1],
@@ -509,6 +584,8 @@ class zurich_hd(object):
         awg_program = awg_program.replace('$play_str', play_str)
         awg_program = awg_program.replace('_c0_', str(self.FS))
         self.awg_upload_string(awg_program, awg_index)
+        hdinfo = self.daq.getList('/{:s}/awgs/0/waveform/waves/0'.format(self.id))
+        self.waveform_length = int(len(hdinfo[0][1][0]['vector'])/2) ## qalen has double channel wave;
 
 
     def awg_upload_string(self,awg_program, awg_index = 0): 
@@ -546,6 +623,33 @@ class zurich_hd(object):
         path = '/{:s}/awgs/{:d}/waveform/waves/{:d}'.format(self.id,awg_index,index)
         self.daq.setVector(path, waveform_native)
 
+    def send_waveform(self,waveform=[[0],[0]],ports=[],check=False):
+        if check:
+            hdinfo = self.daq.getList('/{:s}/awgs/0/waveform/waves/0'.format(self.id))
+            self.waveform_length = int(len(hdinfo[0][1][0]['vector'])/2) ## qalen has double channel wave;
+        
+        wave_dict = dict(zip(ports,waveform)) ## add empty channels in wfs;
+        for k in range(8): 
+            if k+1 not in ports:
+                wave_dict[k+1]=np.zeros(len(waveform[0]))
+
+        _n_ = self.waveform_length - len(waveform[0])
+        if _n_ >= 0: ## if wave length enough to reload
+            waveform_add = [np.hstack((wave_dict[k+1],int(_n_)*[0])) for k in range(8)] ## fill [0] to hold wf len;
+            for k in range(4): ## reload wave following ports
+                if k*2+1 in ports or k*2+2 in ports:
+                    wf = [waveform_add[k*2],waveform_add[k*2+1]]
+                    waveform_native = convert_awg_waveform(wf)
+                    path = '/{:s}/awgs/{:d}/waveform/waves/{:d}'.format(self.id,k,0)
+                    self.daq.setVector(path, waveform_native)
+        else: ## if wave length too short, need building again;
+            print('New HD waveform(len=%r > %r)'%(len(waveform[0]),self.waveform_length))
+            waveform_send = [ _v_ for _v_ in wave_dict.values()]
+            ports_send = [ _p_ for _p_ in wave_dict.keys()]
+            t0 = time.time()
+            self.awg_builder(waveform=waveform_send,ports=ports_send)
+            print('HD-awg_builder:%.3f'%(time.time()-t0))
+
 
     def awg_open(self):
         """打开AWG， 打开输出，设置输出量程"""
@@ -574,12 +678,13 @@ class zurich_hd(object):
 
 
 class microwave_source(object):
-    def __init__(self,device_ip):
+    def __init__(self,device_ip,object_name):
         self.ip = device_ip
         self.freq = 0
         self.power = 0
         self.rm = pyvisa.ResourceManager()
         self.bringup()
+        self.object_name = object_name # mw, mw_r
 
     def init_setup(self):
         while self.get_output() == 0:
@@ -611,9 +716,15 @@ class microwave_source(object):
     def bringup(self):
         self.dev = self.rm.open_resource('TCPIP0::%s::inst0::INSTR' %self.ip)
         self.init_setup()
-        print('Bring up MW:%s'%self.ip)
+        logging.info('Bring up microwave_source:%s'%self.ip)
 
-
+    def refresh(self):
+        try:
+            while self.get_output() == 0:
+                self.set_output(1)
+        except:
+            self.bringup()
+            logging.info(mw.ip,'microwave_source bring up again.')
 
 
 class yokogawa_dc_source(object):
@@ -658,6 +769,9 @@ class yokogawa_dc_source(object):
         else:
             self.state = state
             self.dev.write(':outp:stat %d'%self.state)
+
+
+
 
 
 def convert_awg_waveform(wave_list):
