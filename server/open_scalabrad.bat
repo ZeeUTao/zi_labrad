@@ -1,1 +1,0 @@
-M:\scalabrad\bin\labrad --registry file:///M:/Registry?format=delphi

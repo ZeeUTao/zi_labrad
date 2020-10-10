@@ -20,9 +20,6 @@ ar = st.r
 cxn=labrad.connect()
 dv = cxn.data_vault
 
-# specify the sample, in registry   
-ss = switchSession(cxn,user='hwh',session=None)  
-
 
     
 def loadQubits(sample, write_access=False):
@@ -131,5 +128,8 @@ def s21_scan(sample,freq = ar[1.:6.:0.01,GHz],power = st.r[-1:-30:1,dBm],zpa =0.
     
     return
 
-if __name__ == '__main__':
+def run(user = 'hwh'):
+    # specify the sample, in registry   
+    ss = switchSession(cxn,user=user,session=None)  
     s21_scan(ss)
+    return

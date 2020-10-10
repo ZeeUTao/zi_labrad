@@ -10,8 +10,8 @@ from functools import wraps
 import logging
 import numpy as np 
 
-from zurichHelper import _mpAwg_init
-import waveforms
+from zilabrad.instrument.zurichHelper import _mpAwg_init
+from zilabrad.instrument import waveforms
 
 import labrad
 from labrad.units import Unit,Value

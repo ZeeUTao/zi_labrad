@@ -13,14 +13,14 @@ import matplotlib.pyplot as plt ## give picture
 import numpy as np 
 from math import ceil,pi
 
-from pyle.registry import RegistryWrapper
+from zilabrad.pyle.registry import RegistryWrapper
 import labrad
 from labrad.units import Unit,Value
 _unitSpace = ('V', 'mV', 'us', 'ns','s', 'GHz', 'MHz','kHz','Hz', 'dBm', 'rad','None')
 V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l  = [Unit(s) for s in _unitSpace]
 import pyvisa
 
-from waveforms import convertUnits,waveform
+from zilabrad.instrument.waveforms import convertUnits,waveform
 
 logging.basicConfig(format='%(asctime)s | %(name)s [%(levelname)s] : %(message)s',
                     level=logging.INFO
