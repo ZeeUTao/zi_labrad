@@ -31,7 +31,6 @@ from zilabrad.instrument.qubitServer import runQubits as runQ
 # qa,hd,mw,mw_r are objects (instance)
 
 import zilabrad.plots.adjuster
-import zilabrad.instrument.waveforms
 from zilabrad.plots.dataProcess import datahelp
 import zilabrad.plots.dataProcess
 """
@@ -85,14 +84,17 @@ logging setting
 """
 
 def RunAllExp(*args):
+    qa,hd,mw,mw_r = exp_devices
     RunAllExperiment(exp_devices,*args)
     return
 
 def stop_device():
+    qa,hd,mw,mw_r = exp_devices
     _stop_device(qa,hd)
     return
 
 def check_device():
+    qa,hd,mw,mw_r = exp_devices
     _check_device(mw,mw_r)
     return
 

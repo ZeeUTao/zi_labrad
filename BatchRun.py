@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 """Batched commands for the daily running.
 
-We always use Batch.run()
+We always use in ipython3： run BatchRun
+It will bringup the devices (object), and store in locals()
+
+To reload mp, you can call 'reload_mp', which fed 'devices' to mp.exp_devices
 """
 
 
@@ -10,6 +13,7 @@ from importlib import reload
 import configparser
 import os
 
+from zilabrad.pyle.registry import RegistryWrapper
 from zilabrad.instrument import zurichHelper as zH
 from zilabrad.pyle.workflow import switchSession
 from zilabrad.pyle.util import sweeptools as st
@@ -82,15 +86,23 @@ def update_session(user='hwh'):
 
 
 
+def reload_mp():
+    reload(mp)
+    mp.exp_devices = devices
+    
+_default_modes = [1,2,3,4]
+
+
 user = input("Enter user (default: hwh)") or "hwh"
 ss = update_session(user=user)
 
 do_bringup = input("Skip Bringup? (enter 0 for skip, default 1)") or 1
 if do_bringup != '0':
     modes = _default_modes
-    qa,hd,mw,mw_r = bringup_device(modes=modes)
     import zilabrad.mp as mp
-    mp.exp_devices = qa,hd,mw,mw_r
+    devices = bringup_device(modes=modes)
+    mp.exp_devices = devices
+    print(mp.exp_devices)
     
 
 from zilabrad.instrument import zurichHelper

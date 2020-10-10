@@ -1,6 +1,6 @@
 import numpy as np
 
-import zilabrad.pyle
+
 from zilabrad.pyle.pipeline import pmap, returnValue
 from zilabrad.pyle.util import getch
 from zilabrad.pyle.datasaver import Dataset
@@ -191,7 +191,7 @@ def grid(func, axes, **kw):
     return run(wrapped, gridSweep(axes), abortPrefix=[1], **kw)
 
 
-def checkAbort(iterable, labels=[], prefix=[]):
+def checkAbort(iterable, labels=[], prefix=[],func=None):
     """Wrap an iterator to allow it to be aborted during iteration.
     
     Pressing ESC will cause the iterable to abort immediately.
@@ -217,9 +217,14 @@ def checkAbort(iterable, labels=[], prefix=[]):
         for i in prefix:
             curr = curr[i]
         key = getch.getch()
+        key2 = getch.getch()
         if key is not None:
-            if key == b'\x1b':
+            if key == b'\x1b' and key2 == b'\x1b':
                 print('Abort scan')
+                if func:
+                    try:
+                        func()
+                    except:pass
                 break
             elif hasattr(curr, '__len__') and key in [str(i+1) for i in range(len(curr))]:
                 idx = int(key) - 1
