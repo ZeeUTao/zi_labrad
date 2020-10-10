@@ -31,6 +31,7 @@ from zilabrad.instrument.qubitServer import runQubits as runQ
 # qa,hd,mw,mw_r are objects (instance)
 
 import zilabrad.plots.adjuster
+import zilabrad.instrument.waveforms as waveforms
 from zilabrad.plots.dataProcess import datahelp
 import zilabrad.plots.dataProcess
 """
