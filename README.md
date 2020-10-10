@@ -139,6 +139,54 @@ refresh()
 
 ```
 
+#### qubitServer
+
+```mermaid
+classDiagram
+
+scripts_like_mp --|> qubitServer
+
+
+class scripts_like_mp{
+exp_devices
+qubits
+waveforms
+experiment_func()
++s21_scan()
++ramsey()
+}
+
+zurich_qa --|> qubit_1
+zurich_qa --|> qubit_2
+
+zurich_hd --|> qubit_1
+zurich_hd --|> qubit_2
+
+qubitServer --|> zurichHelper
+qubitServer --|> API_class
+API_class --|> device_object
+device_object --> qubit_n
+
+zurichHelper --|> zurich_qa
+zurichHelper --|> zurich_hd
+zurichHelper --|> microwave_source
+zurichHelper --|> microwave_source2
+microwave_source --> qubit_1
+microwave_source2 --> qubit_2
+
+qubitServer: loadQubits(sample)
+qubitServer: dataset_create(dataset)
+qubitServer: RunAllExperiment(exp_devices)
+qubitServer: runQubits(qubits,exp_devices)
+
+
+
+```
+
+
+
+
+
 #### mp
 
 The script includes the functions to implement experiment like s21_scan. 
@@ -199,7 +247,8 @@ def runSweeper(devices,para_list):
     q['experiment_length'] = start
     q['do_readout'] = True
     data = runQ([q],devices)
-    
+
+    results = []
     ## analyze data and return
     for _d_ in data:
         amp = np.mean(np.abs(_d_))/q.power_r 
@@ -208,6 +257,7 @@ def runSweeper(devices,para_list):
         Qv = np.mean(np.imag(_d_))
         ## multiply channel should unfold to a list for return result
         result = [amp,phase,Iv,Qv]
+        results.append(result)
 	return result 
 
 axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
@@ -224,7 +274,7 @@ For doing multi-qubits experiments, we can simply use the iteration in python
 for q in qubits:
 	q['key'] = value
 	## ......
-data = runQ([q],devices)
+data = runQ(qubits,devices)
 ```
 
 
@@ -249,7 +299,7 @@ q.xy += waveforms.xxxx2()
 ""
 ```
 
-- The object is abstract, you can imagine it is a mathematical formula, and implement calculation, including added (foo1+foo2) , multiply by number (c*foo). 
+- The object is abstract, you can imagine it as a mathematical formula, and can implement calculation on it, including add (foo1+foo2) , multiply by number (c*foo). 
 
   Such features are given by the Envelope (class) from pyle.envelope
 
