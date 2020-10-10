@@ -110,13 +110,11 @@ def _stop_device(*servers:object):
     return
 
 
-def _mpAwg_init(q: dict,*servers):
+def _mpAwg_init(qubits:list,*servers):
     """
     prepare and Returns waveforms
     Args:
-        q (dict): contains value as parameter
-        
-
+        qubits (list) -> [q (dict)]: contains value as parameter
         qa (object): zurich_qa instance
         hd (object): zurich_hd instance
         mw,mw_r (object): microwave_source instance
@@ -129,40 +127,32 @@ def _mpAwg_init(q: dict,*servers):
     try to create features in the exsiting class but not create a new function
     """
     qa,hd,mw,mw_r = servers[:4]
+    q = qubits[0] ## the first qubit as master
 
     hd.pulse_length_s = 0 ## add hdawgs length with unit[s]
 
     qa.result_samples = q['stats']  ## int: sample number for one sweep point
     qa.set_adc_trig_delay(q['bias_start']+hd.pulse_length_s*s, q['readout_delay'])
     qa.set_pulse_length(q['readout_len'])
-    qa.set_qubit_frequency([q.demod_freq])
-    qa.set_subscribe(source=7)
 
-    ## set 'microwave source [readout]'
-    mw_r.set_power(q['readout_mw_power'])
-    mw_r.set_freq(q['readout_mw_fc'])
-    ## set 'microwave source [XY]'
-    mw.set_power(q['xy_mw_power'])
-    mw.set_freq(q['xy_mw_fc'])
+    f_read = []
+    for _q in qubits:
+        if _q['do_readout'] in _q.keys():
+            f_read += [_q.demod_freq]
+    if len(f_read) == 0:
+        raise Exception('Must set one readout frequency at least')
+    qa.set_qubit_frequency(f_read)
 
-    w_qa = waveform(all_length=qa.pulse_length_s,fs=1.8e9,origin=0) ## only readout pulse; 
-    w_hd = waveform(all_length=q['bias_start'][s]+q['awgs_pulse_len'][s]+qa.pulse_length_s+q['bias_end'][s],fs=2.4e9,origin=-q['bias_start'][s])
+    # set 'microwave source [readout]'
+    # mw_r.set_power(q['readout_mw_power'])
+    # mw_r.set_freq(q['readout_mw_fc'])
+    # set 'microwave source [XY]'
+    # mw.set_power(q['xy_mw_power'])
+    # mw.set_freq(q['xy_mw_fc'])
+
     ## initialize waveforms and building 
-
-    # q.dc = [w_hd.bias(amp=0.4,length=q['bias_start'][s]+q['awgs_pulse_len'][s]+qa.pulse_length_s+q['bias_end'][s])]
-    # q.xy = [w_hd.square(amp=0.2),w_hd.square(amp=0.2)]
-    # q.z = [w_hd.square(amp=0.3)]
-    # q.r = [w_qa.square(amp=0),w_qa.square(amp=0)]
-    ## set hd's awgs waveforms
-    # t0 = time.time()
-    # hd.awg_builder(waveform=q.xy+q.dc+q.z, ports=[q.channels['xy_I'],q.channels['xy_Q'],q.channels['dc'],q.channels['z']])
-    # print('hd-awg_builder:',time.time()-t0)
-    ## set qa's awgs waveforms
-    # t0 = time.time()
-    # qa.awg_builder(waveform = q.r)
-    # print('qa-awg_builder:',time.time()-t0)
     ### ----- finish ----- ###
-    return w_qa,w_hd
+    return 
 
 
 
@@ -248,6 +238,9 @@ class zurich_qa(object):
     
     @convertUnits(length='s')
     def set_pulse_length(self, length):
+        if length > 4096/1.8:
+            print('QA pulse lenght too long ( %.1f>%.1f ns)'%(length,4096/1.8))
+            length = 4096/1.8 ## set the maximum length
         self.pulse_length_s = int(length*self.FS/8)*8/self.FS
         self._pulse_length_ =  self.pulse_length_s*self.FS ## unit --> Sample Number
         self._integration_length_ = self._pulse_length_ ## unit --> Sample Number
@@ -363,11 +356,11 @@ class zurich_qa(object):
     def set_qubit_frequency(self, frequency_array):
         #设置解调用的weights, 更新 channels, 和paths
         self.channels = [] # channel from 0 to 9;
-        self.qubit_frequency = frequency_array
-        for i in range(len(self.qubit_frequency)):
-            self.channels.append(i)  #更新解调器/通道   
-        self.set_all_integration()
-        self.set_subscribe()
+        if frequency_array != self.qubit_frequency: ## 没有改动就不重新上传
+            self.qubit_frequency = frequency_array
+            self.channels = [k for k in range(len(self.qubit_frequency))]  #更新解调器/通道, channel from 0 to 9;
+            self.set_all_integration()
+            self.set_subscribe()
 
     def set_all_integration(self):
         for i in range(len(self.qubit_frequency)):
@@ -378,7 +371,7 @@ class zurich_qa(object):
         # integration settings for one I/Q pair
         from numpy import pi
         self.daq.setDouble('/{:s}/qas/0/integration/length'.format(self.device), self._integration_length_)
-        w_index      = np.arange(0, self._pulse_length_ , 1)
+        w_index      = np.arange(0, self._integration_length_ , 1)
         weights_real = np.cos(w_index/1.8e9*qubit_frequency*2*pi)
         weights_imag = np.sin(w_index/1.8e9*qubit_frequency*2*pi)
         w_real = np.array(weights_real)
@@ -690,21 +683,26 @@ class microwave_source(object):
         while self.get_output() == 0:
             self.set_output(1)
 
-    def get_freq(self):
-        self.freq = float(self.dev.query(':sour:freq?'))
-        return self.freq
 
     @convertUnits(freq='Hz')
     def set_freq(self,freq):
-        self.dev.write(':sour:freq %f Hz'%freq)
+        if self.freq != freq:
+            self.dev.write(':sour:freq %f Hz'%freq)
+            self.freq = freq
 
     @convertUnits(power='dBm')
     def set_power(self,power):
-        self.dev.write(':sour:pow %f'%power) ## unit:dBm
+        if self.power != power:
+            self.dev.write(':sour:pow %f'%power) 
+            self.power = power
 
     def get_power(self):
         self.power = float(self.dev.query(':sour:pow?'))
         return self.power
+
+    def get_freq(self):
+        self.freq = float(self.dev.query(':sour:freq?'))
+        return self.freq
 
     def get_output(self):
         state = self.dev.query(':outp:stat?')

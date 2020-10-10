@@ -130,49 +130,49 @@ def runQubits(qubits,exp_devices):
     Args:
         qubits (list): a list of dictionary
         _runQ_servers (list/tuple): instances used to control device
-
+    
+    TODO:
+        check _is_runfirst=True? Need run '_mpAwg_init' at first running
     """
-    qa,hd,mw,mw_r = exp_devices
-
-
+    qa,hd,mw,mw_r,wfs = exp_devices[:5]
+    
+    qbs_waveform,qbs_ports,qbs_r = [],[],[waveforms.NOTHING,waveforms.NOTHING]
     ## reload new waveform in this runQ
     for q in qubits: ## 多比特还需要修改这个send方法; 
         ## 结束hd脉冲,开始设置读取部分
-        w_qa,w_hd = _mpAwg_init(q,qa,hd,mw,mw_r)
+        # w_qa,w_hd = _mpAwg_init(q,qa,hd,mw,mw_r)
+        if 'dc' not in q.keys():
+            q.dc = [waveforms.square(amp=q['bias'],start=w_hd.origin,end=w_hd.tlist[-1])]
         
-        
-        q.xy_array = [w_hd.func2array((q.xy)[i]) for i in [0,1]]
-
-        q.z_array = [w_hd.func2array(q.z[0])]
-
-        def bias(self,amp=0,length=None):
-            if length != None:
-                self.bias_sample = ceil(length*self.fs/16)*16
-            # pulse = [amp,self.bias_len]
-            return np.ones(self.sample_number)*amp
-
-        q.dc = waveforms.square(amp=q['bias'],start=w_hd.origin,end=w_hd.tlist[-1])
-        q.dc_array = [w_hd.func2array(q.dc)]
-
         if 'do_readout' in q.keys():
-            q.demod_phase = q.qa_adjusted_phase[Hz]*(qa.adc_trig_delay_s) ## adjusted phase -> unit[MHz]
-            q.r = w_qa.readout([q])
-
+            if 'r' not in q.keys():
+                q.demod_phase = q.qa_adjusted_phase[Hz]*(qa.adc_trig_delay_s) ## adjusted phase
+                q.r = waveforms.readout(amp=q.power_r,phase=q.demod_phase,freq=q.demod_freq,start=0,length=q.readout_len)
+                
         if hd.pulse_length_s != q['experiment_length']:
             hd.pulse_length_s = q['experiment_length']
             qa.set_adc_trig_delay(q['bias_start'][s]+hd.pulse_length_s)
 
-        mw_r.set_freq(q['readout_mw_fc'])
-        mw_r.set_power(q['readout_mw_power'])
+        q.xy_array = [wfs.func2array((q.xy)[i],fs=hd.FS) for i in [0,1]]
+        q.z_array = [wfs.func2array(q.z[0],fs=hd.FS)]
+        q.dc_array = [wfs.func2array([q.dc],fs=hd.FS)]
+        
+        qbs_waveform += q.xy_array+q.dc_array+q.z_array
+        qbs_ports += [q.channels['xy_I'],q.channels['xy_Q'],q.channels['dc'],q.channels['z']]
+        
+        qbs_r[0] += q.r[0]
+        qbs_r[1] += q.r[1]
+        
+    qbs_r_array = [wfs.func2array((qbs_r)[i],fs=qa.FS) for i in [0,1]]
 
-        mw.set_freq(q['xy_mw_fc'])
-        mw.set_power(q['xy_mw_power'])
+    mw_r.set_freq(q['readout_mw_fc'])
+    mw_r.set_power(q['readout_mw_power'])
 
-        hd.send_waveform(waveform=q.xy_array+q.dc_array+q.z_array,
-                         ports=[q.channels['xy_I'],q.channels['xy_Q'],q.channels['dc'],q.channels['z']]
-                         )
-
-        qa.send_waveform(waveform=q.r)
+    mw.set_freq(q['xy_mw_fc'])
+    mw.set_power(q['xy_mw_power'])
+    
+    hd.send_waveform(waveform=qbs_waveform, ports=qbs_ports)
+    qa.send_waveform(waveform=qbs_r_array)
     ## start to run experiment
     hd.awg_open()
     qa.awg_open()
