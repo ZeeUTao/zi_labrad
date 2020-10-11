@@ -110,7 +110,7 @@ def _stop_device(*servers:object):
     return
 
 
-def _mpAwg_init(qubits:list,*servers):
+def _mpAwg_init(qubits:list,servers):
     """
     prepare and Returns waveforms
     Args:
@@ -137,7 +137,7 @@ def _mpAwg_init(qubits:list,*servers):
 
     f_read = []
     for _q in qubits:
-        if _q['do_readout'] in _q.keys():
+        if _q['do_readout']: ##in _q.keys():
             f_read += [_q.demod_freq]
     if len(f_read) == 0:
         raise Exception('Must set one readout frequency at least')
@@ -392,8 +392,8 @@ class zurich_qa(object):
             timeout (float): time in seconds before timeout Error is raised.
         """
         if self.noisy:
-            print('collecting results')
-        poll_length = 0.001  # s
+            print('acquisition_poll')
+        poll_length = 0.01  # s
         poll_timeout = 100  # ms
         poll_flags = 0
         poll_return_flat_dict = True
@@ -431,6 +431,7 @@ class zurich_qa(object):
         # Stop result unit
         self.daq.unsubscribe(self.paths)
         self.daq.setInt('/{:s}/qas/0/result/enable'.format(self.device), 0)
+        self.qubit_frequency = []
 
     def set_subscribe(self,source=None): 
         """配置采集数据所需设置,设定读取result的path

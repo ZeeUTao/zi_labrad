@@ -18,6 +18,9 @@ from zilabrad.instrument import zurichHelper as zH
 from zilabrad.pyle.workflow import switchSession
 from zilabrad.pyle.util import sweeptools as st
 
+from zilabrad.instrument import waveforms
+import zilabrad.instrument.qubitServer as qubitServer
+
 import labrad
 from labrad.units import Unit,Value
 
@@ -44,18 +47,25 @@ def loadInfo(paths=['Servers','devices']):
     reg = RegistryWrapper(cxn, ['']+paths)
     return reg.copy()
 
-def bringup_device(modes=[1,2,3,4]):
+def bringup_device(modes):
     dev = loadInfo(paths=['Servers','devices']) ## only read
-    for m in modes:
+    for m in modes: 
         if m == 1:
             qa = zH.zurich_qa(dev.zi_qa_id)
+            devices[m-1] = qa
         if m == 2:
             hd = zH.zurich_hd(dev.zi_hd_id)
+            devices[m-1] = hd
         if m == 3:
             mw = zH.microwave_source(dev.microwave_source_xy,'mw')
+            devices[m-1] = mw
         if m == 4:
-            mw_r = zH.microwave_source(dev.microwave_source_readout,'mw_r')      
-    return qa,hd,mw,mw_r        
+            mw_r = zH.microwave_source(dev.microwave_source_readout,'mw_r')
+            devices[m-1] = mw_r
+        if m == 5:
+            wfs = waveforms.waveform()
+            devices[m-1] = wfs
+    return       
             
 """Instance: physical units
 
@@ -89,20 +99,24 @@ def update_session(user='hwh'):
 def reload_mp():
     reload(mp)
     mp.exp_devices = devices
-    
-_default_modes = [1,2,3,4]
 
+    
+_default_modes = [1,2,3,4,5]
+
+import zilabrad.mp as mp
 
 user = input("Enter user (default: hwh)") or "hwh"
 ss = update_session(user=user)
 
 do_bringup = input("Skip Bringup? (enter 0 for skip, default 1)") or 1
 if do_bringup != '0':
+    devices = [None]*len(_default_modes)
     modes = _default_modes
-    import zilabrad.mp as mp
-    devices = bringup_device(modes=modes)
+    
+    bringup_device(modes=modes)
     mp.exp_devices = devices
-    print(mp.exp_devices)
+    for dev in mp.exp_devices:
+        print(dev.__class__.__name__)
     
 
 from zilabrad.instrument import zurichHelper

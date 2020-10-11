@@ -21,6 +21,9 @@ V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l  = [Unit(s) for s in _unitSpace]
 cxn = labrad.connect()
 dv = cxn.data_vault
 
+logging.basicConfig(format='[%(levelname)s] : %(message)s',
+                    level=logging.INFO
+                    )
 
 _noisy_printData = True
 
@@ -109,8 +112,11 @@ def RunAllExperiment(exp_devices,function,iterable,
             data_send = swept_paras + result
 
         dv.add(data_send.copy()) ## save value to dataVault
-        if _noisy_printData == True:
-            print(data_send)
+        
+        logging.debug(
+            str(np.round(data_send,4))
+            )
+        
         return result
 
     
@@ -138,14 +144,11 @@ def runQubits(qubits,exp_devices):
     
     qbs_waveform,qbs_ports,qbs_r = [],[],[waveforms.NOTHING,waveforms.NOTHING]
     ## reload new waveform in this runQ
-    for q in qubits: ## 多比特还需要修改这个send方法; 
-        ## 结束hd脉冲,开始设置读取部分
-        # w_qa,w_hd = _mpAwg_init(q,qa,hd,mw,mw_r)
+    for q in qubits: ## 多比特
         if 'dc' not in q.keys():
-            q.dc = [waveforms.square(amp=q['bias'],
+            q.dc = waveforms.square(amp=q['bias'],
                     start= -q['bias_start'],
                     end= q['bias_end']['s']+q['experiment_length'])
-                    ]
         
         if 'do_readout' in q.keys():
             if 'r' not in q.keys():
@@ -156,26 +159,30 @@ def runQubits(qubits,exp_devices):
             hd.pulse_length_s = q['experiment_length']
             qa.set_adc_trig_delay(q['bias_start'][s]+hd.pulse_length_s)
 
-        q.xy_array = [wfs.func2array((q.xy)[i],fs=hd.FS) for i in [0,1]]
-        q.z_array = [wfs.func2array(q.z[0],fs=hd.FS)]
-        q.dc_array = [wfs.func2array(q.dc[0],fs=hd.FS)]
+        wfs.set_tlist(origin=-q['bias_start'],end=q['bias_end']['s']+q['experiment_length'],fs=hd.FS)
+        q.xy_array = [wfs.func2array((q.xy)[i]) for i in [0,1]]
+        q.z_array = [wfs.func2array(q.z)]
+        q.dc_array = [wfs.func2array(q.dc)]
         
         qbs_waveform += q.xy_array+q.dc_array+q.z_array
         qbs_ports += [q.channels['xy_I'],q.channels['xy_Q'],q.channels['dc'],q.channels['z']]
         
         qbs_r[0] += q.r[0]
         qbs_r[1] += q.r[1]
-        
-    qbs_r_array = [wfs.func2array((qbs_r)[i],fs=qa.FS) for i in [0,1]]
-
+    ## set 'microwave source [readout]'
     mw_r.set_freq(q['readout_mw_fc'])
     mw_r.set_power(q['readout_mw_power'])
-
+    ## set 'microwave source [xy]'
     mw.set_freq(q['xy_mw_fc'])
     mw.set_power(q['xy_mw_power'])
-    
+
+    wfs.set_tlist(origin=0,end=q.readout_len,fs=qa.FS)
+    qbs_r_array = [wfs.func2array(qbs_r[i]) for i in [0,1]]
+    if 'do_init' not in qubits[0].keys():
+        _mpAwg_init(qubits,exp_devices[:4])
+        qubits[0]['do_init']=True
+        logging.info('do_init')
     hd.send_waveform(waveform=qbs_waveform, ports=qbs_ports)
-    print(qbs_r_array)
     qa.send_waveform(waveform=qbs_r_array)
     ## start to run experiment
     hd.awg_open()

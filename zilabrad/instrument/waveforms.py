@@ -80,6 +80,7 @@ class waveform(object):
     def __init__(self,all_length=1e-6,fs=1.8e9,origin=0):
         self.fs = fs
         self.sample_number = ceil(all_length*self.fs/16)*16 ## QA lenght最小16,最小单位间隔8; HD length最小32,最小单位间隔16;
+        self.tlist = []
         # self.len = self.sample_number/self.fs ## set as 16 sample integral multiple;
         # self.origin = origin ## mark real start in waveform; set QA trigger as 0  
         # self.tlist = np.asarray([k/self.fs+self.origin for k in range(self.sample_number)])
@@ -91,20 +92,25 @@ class waveform(object):
     # w_qa(env)
     # on the other hand, some frequently used waveforms are provided below
     def func2array(self,envelopes,fs=None):
-        start = envelopes.start
-        end = envelopes.end
-        # if end > self.len: 
-            # raise Exception("Waveform too long!")
-        # if start < self.origin:
-            # raise Exception("Waveform start out of range")
-        if fs == None:
-            fs = self.fs
-        pulse = [envelopes(t) for t in np.arange(start,end,1/fs)]
+        if len(self.tlist) == 0:
+            start = envelopes.start
+            end = envelopes.end
+            if fs == None:
+                fs = self.fs
+            tlist = np.arange(start,end,1/fs)
+        else:
+            tlist = self.tlist
+
+        pulse = [envelopes(t) for t in tlist]
         return pulse
     
     def __call__(self,envelopes):
         return self.func2array(envelopes)
-    
+        
+    @convertUnits(origin='s',end='s')
+    def set_tlist(self,origin,end,fs):
+        self.tlist = np.arange(origin,end,1/fs)
+        
     # @convertUnits(amp='V')
     # def bias(self,amp=0,length=None):
     #     if length != None:

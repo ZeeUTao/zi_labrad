@@ -242,14 +242,13 @@ def example_s21_scan(sample,measure=0,freq=6.0*GHz,delay=0*ns,
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
     result_list = RunAllExp(runSweeper,axes_scans)
 
-
     if back:
         return result_list
 
 @expfunc_decorator
 def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,
     mw_power=None,bias=None,power=None,sb_freq=None,
-    name='s21_scan',des=''):
+    name='s21_scan',des='',back=False):
     """ 
     s21 scanning
 
@@ -288,7 +287,6 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,
     dataset = sweeps.prepDataset(sample, name+des, axes, deps,kw=kw)
     dataset_create(dataset)
 
-
     def runSweeper(devices,para_list):
         freq,bias,power,sb_freq,mw_power,delay = para_list
         q.power_r = power2amp(power)
@@ -296,7 +294,7 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,
         q['readout_mw_fc'] = (freq - q.demod_freq)*Hz
 
         start = 0   
-        q.z = [waveforms.square(amp=0)]
+        q.z = waveforms.square(amp=0)
         q.xy = [waveforms.square(amp=0),waveforms.square(amp=0)]
         q['bias'] = bias
         
@@ -306,6 +304,7 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,
         
         q['experiment_length'] = start
         q['do_readout'] = True
+        
         data = runQ([q],devices)
 
         for _d_ in data:
@@ -318,7 +317,8 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,
 
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
     result_list = RunAllExp(runSweeper,axes_scans)
-    return
+    if back:
+        return result_list
 
 
 
