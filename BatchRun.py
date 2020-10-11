@@ -24,6 +24,7 @@ import zilabrad.instrument.qubitServer as qubitServer
 import labrad
 from labrad.units import Unit,Value
 
+from qcodes.instrument.channel import ChannelList, InstrumentChannel
 
 ar = st.RangeCreator()
 _unitSpace = ('V','mV','us','ns','s','GHz','MHz','kHz','Hz','dBm','rad','None')
@@ -66,11 +67,6 @@ def bringup_device(modes):
             wfs = waveforms.waveform()
             devices[m-1] = wfs
     return       
-            
-"""Instance: physical units
-
-defined via Unit(class) from labrad.units
-"""
 
 
 
@@ -106,27 +102,26 @@ exec(mpreload)
 devices[0].noisy = True
 #devices will print some strings about running
 """
+from zilabrad import *
 
 _default_modes = [1,2,3,4,5]
 
-import zilabrad.mp as mp
-
-user = input("Enter user (default: hwh)") or "hwh"
-ss = update_session(user=user)
-
-do_bringup = input("Skip Bringup? (enter 0 for skip, default 1)") or 1
-if do_bringup != '0':
-    devices = [None]*len(_default_modes)
-    modes = _default_modes
-    
-    bringup_device(modes=modes)
-    mp.exp_devices = devices
-    for dev in mp.exp_devices:
-        print(dev.__class__.__name__)
-    
-
-from zilabrad.instrument import zurichHelper
 
 
-reload(zurichHelper)
+if __name__ == '__main__':
+    user = input("Enter user (default: hwh)") or "hwh"
+    ss = update_session(user=user)
+
+
+    do_bringup = input("Skip Bringup? (enter 0 for skip, default 1)") or 1
+    if do_bringup != '0':
+        devices = [None]*len(_default_modes)
+        modes = _default_modes
+        
+        bringup_device(modes=modes)
+        mp.exp_devices = devices
+        for dev in mp.exp_devices:
+            print(dev.__class__.__name__)
+    from zilabrad.instrument import zurichHelper
+    reload(zurichHelper)
 
