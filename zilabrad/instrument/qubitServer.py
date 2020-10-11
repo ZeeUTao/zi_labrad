@@ -21,11 +21,7 @@ V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l  = [Unit(s) for s in _unitSpace]
 cxn = labrad.connect()
 dv = cxn.data_vault
 
-logging.basicConfig(format='[%(levelname)s] : %(message)s',
-                    level=logging.INFO
-                    )
 
-_noisy_printData = True
 
 def loadQubits(sample, write_access=False):
     """Get local copies of the sample configuration stored in the labrad.registry.
@@ -98,6 +94,8 @@ def RunAllExperiment(exp_devices,function,iterable,
         else:
             return a[a.unit] 
 
+    _noisy_printData = True
+
     def run(function, paras):
         # pass in all_paras to the function
         all_paras = [Unit2SI(a) for a in paras[0]]
@@ -111,12 +109,10 @@ def RunAllExperiment(exp_devices,function,iterable,
         else:
             data_send = swept_paras + result
 
-        dv.add(data_send.copy()) ## save value to dataVault
-        
-        logging.debug(
-            str(np.round(data_send,4))
-            )
-        
+        if _noisy_printData == True:
+            print(
+                str(np.round(data_send,4))
+                )      
         return result
 
     
