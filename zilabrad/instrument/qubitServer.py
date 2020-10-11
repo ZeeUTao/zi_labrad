@@ -21,6 +21,7 @@ V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l  = [Unit(s) for s in _unitSpace]
 cxn = labrad.connect()
 dv = cxn.data_vault
 
+np.set_printoptions(suppress=True)
 
 
 def loadQubits(sample, write_access=False):
@@ -109,6 +110,7 @@ def RunAllExperiment(exp_devices,function,iterable,
         else:
             data_send = swept_paras + result
 
+        
         if _noisy_printData == True:
             print(
                 str(np.round(data_send,4))
