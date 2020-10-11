@@ -16,9 +16,7 @@ __all__ = [
 	'mp',
 	'zurichHelper',
 	'switchSession',
-	'waveforms',
-	'q_units',
-	'ar',
+	'waveforms'
 ]
 
 
@@ -29,17 +27,6 @@ from zilabrad.instrument import waveforms
 
 
 
-
-from labrad.units import Unit,Value
-_unitSpace = ('V','mV','us','ns','s','GHz','MHz','kHz','Hz','dBm','rad','None')
-q_units = [Unit(s) for s in _unitSpace]
-"""
-Example:
-	V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l = zilabrad.q_units
-"""
-
-from zilabrad.pyle.util import sweeptools
-ar = sweeptools.RangeCreator()
 """
 Example:
 	ar[1.0:2.0:0.01,GHz]
