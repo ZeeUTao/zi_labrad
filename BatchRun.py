@@ -12,7 +12,7 @@ To reload mp, you can call 'reload_mp', which fed 'devices' to mp.exp_devices
 from importlib import reload
 import configparser
 import os
-
+import numpy as np
 from zilabrad.pyle.registry import RegistryWrapper
 from zilabrad.instrument import zurichHelper as zH
 from zilabrad.pyle.workflow import switchSession
@@ -96,11 +96,17 @@ def update_session(user='hwh'):
 
 
 
-def reload_mp():
-    reload(mp)
-    mp.exp_devices = devices
+mpreload = r'reload(mp);mp.exp_devices=devices'
+"""
+Quick commands:
 
-    
+exec(mpreload)
+#quick eval command, example:
+
+devices[0].noisy = True
+#devices will print some strings about running
+"""
+
 _default_modes = [1,2,3,4,5]
 
 import zilabrad.mp as mp

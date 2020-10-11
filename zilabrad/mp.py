@@ -360,7 +360,7 @@ def spectroscopy(sample,measure=0,stats=1024,freq=6.0*GHz,specLen=1*us,specAmp=0
         q['xy_mw_fc'] = freq-sb_freq[Hz]
         
         start = 0
-        q.z = [waveforms.square(amp=zpa,start=start,end=start+specLen[s]+100e-9)]
+        q.z = waveforms.square(amp=zpa,start=start,end=start+specLen[s]+100e-9)
         start += 50e-9
         q.xy = [waveforms.cosine(amp=specAmp,freq=sb_freq[Hz],start=start,end=start+specLen[s]),
                 waveforms.sine(amp=specAmp,freq=sb_freq[Hz],start=start,end=start+specLen[s])]
@@ -440,7 +440,7 @@ def rabihigh(sample,measure=0,stats=1024,piamp=0.5,df=0*MHz,
         ## write waveforms 
         start = 0
         ## 如果有xy/z pulse,就在这加,然后更改start;
-        q.z = [waveforms.square(amp=zpa,start=start,length=q.piLen[s]+100e-9)]
+        q.z = waveforms.square(amp=zpa,start=start,length=q.piLen[s]+100e-9)
         start += 50e-9
         q.xy = [waveforms.cosine(amp=piamp,freq=q.sb_freq+df,start=start,length=q.piLen[s]),
                 waveforms.sine(amp=piamp,freq=q.sb_freq+df,start=start,length=q.piLen[s])]
@@ -510,7 +510,7 @@ def IQraw(sample,measure=0,stats=1024,update=False,analyze=False,reps=1,
 
         ## with pi pulse --> |1> ##
         start = 0
-        q.z = [waveforms.square(amp=q.zpa[V],start=start,length=q.piLen[s]+100e-9)]
+        q.z = waveforms.square(amp=q.zpa[V],start=start,length=q.piLen[s]+100e-9)
         start += 50e-9
         q.xy = [waveforms.cosine(amp=q.piAmp,freq=q.sb_freq,start=start,length=q.piLen[s]),
                 waveforms.sine(amp=q.piAmp,freq=q.sb_freq,start=start,length=q.piLen[s])]
@@ -601,7 +601,7 @@ def T1_visibility(sample,measure=0,stats=1024,delay=0.8*us,
         ### ----- with pi pulse ----- ###
         start = 0  
         
-        q.z = [waveforms.square(amp=zpa,start=start,length=delay+q.piLen[s]+100e-9)]
+        q.z = waveforms.square(amp=zpa,start=start,length=delay+q.piLen[s]+100e-9)
         start += 50e-9
         q.xy = [waveforms.cosine(amp=q.piAmp,freq=q.sb_freq,start=start,length=q.piLen[s]),
                 waveforms.sine(amp=q.piAmp,freq=q.sb_freq,start=start,length=q.piLen[s])]
@@ -686,7 +686,7 @@ def ramsey(sample,measure=0,stats=1024,delay=ar[0:10:0.4,us],
 
         ### ----- begin waveform ----- ###
         start = 0  
-        q.z = [waveforms.square(amp=q.zpa[V],start=start,length=delay+2*q.piLen[s]+100e-9)]
+        q.z = waveforms.square(amp=q.zpa[V],start=start,length=delay+2*q.piLen[s]+100e-9)
         start += 50e-9
         q.xy = [waveforms.cosine(amp=q.piAmp/2,freq=q.sb_freq,phase=0,start=start,length=q.piLen[s]),
                 waveforms.sine(amp=q.piAmp/2,freq=q.sb_freq,phase=0,start=start,length=q.piLen[s])]
@@ -779,7 +779,7 @@ def s21_dispersiveShift(sample,measure=0,stats=1024,freq=ar[6.4:6.5:0.02,GHz],de
         ## with pi pulse --> |1> ##
         q.xy_sb_freq = (q['f10'] - q['xy_mw_fc'])[Hz]
         start = 0 
-        q.z = [waveforms.square(amp=q.zpa[V],start=start,length=q.piLen[s]+100e-9)]
+        q.z = waveforms.square(amp=q.zpa[V],start=start,length=q.piLen[s]+100e-9)
         start += 50e-9
         q.xy = [waveforms.cosine(amp=q.piAmp,freq=q.xy_sb_freq,start=start,length=q.piLen[s]),
                 waveforms.sine(amp=q.piAmp,freq=q.xy_sb_freq,start=start,length=q.piLen[s])]
@@ -824,8 +824,93 @@ def s21_dispersiveShift(sample,measure=0,stats=1024,freq=ar[6.4:6.5:0.02,GHz],de
         return result_list,q
 
 
+##################
+# Multi qubits functions
+##################
+    
+def gene_binary(qNum,qLevel=2):
+    import itertools
+    lbs = itertools.product(np.arange(qLevel),repeat=qNum)
+    labels = []
+    for i,lb in enumerate(lbs):
+        label =  ''.join(str(e) for e in lb)
+        label = '0'*(qNum-len(label)) + label
+        labels += [label]
+    return labels
+        
+def prep_Nqbit(qubits):
+    for _q in qubits:
+        _q.channels = dict(_q['channels'])
+        _q.power_r = power2amp(_q['readout_amp']['dBm'])
+        _q.demod_freq = _q['readout_freq'][Hz]-_q['readout_mw_fc'][Hz]
+        _q.sb_freq = (_q['f10'] - _q['xy_mw_fc'])[Hz]
 
+        _q.xy = [waveforms.NOTHING,waveforms.NOTHING]
+        _q.z = waveforms.NOTHING
+    return
+def deps_Nqbitpopu(nq: int,qLevel: int = 2):           
+    labels = gene_binary(nq,qLevel)
+    deps = []
+    for label in labels:
+        deps += [('|' + label + '>','prob','')]
+    return deps
 
+@expfunc_decorator
+def qqiswap(sample,measure=0,delay=20*ns,zpa=None):
+    name='iswap'
+    """ 
+        sample: select experimental parameter from registry;
+        stats: Number of Samples for one sweep point;
+    """
+    sample, qubits, Qubits = loadQubits(sample, write_access=True)
+
+    prep_Nqbit(qubits)
+
+    q = qubits[measure]
+    if zpa == None:
+        zpa = q['zpa']
+
+    ## set some parameters name;
+    axes = [(delay,'delay'),(zpa,'zpa')]
+    deps = deps_Nqbitpopu(nq = 2,qLevel = 2)
+
+    # create dataset
+    dataset = sweeps.prepDataset(sample, name, axes, deps,kw={})
+    dataset_create(dataset)
+
+    def runSweeper(devices,para_list):
+        delay,zpa = para_list
+
+        start = 0
+
+        start += 50e-9
+        piamp = q['piAmp']
+        q.xy = [waveforms.cosine(amp=piamp,freq=q.sb_freq,start=start,length=q.piLen[s]),
+                waveforms.sine(amp=piamp,freq=q.sb_freq,start=start,length=q.piLen[s])]
+
+        start += q.piLen[s] + 50e-9
+
+        q.z = waveforms.square(amp=zpa,start=start,length=q.piLen[s]+100e-9)
+
+        start += 100e-9 ## 额外添加的读取间隔,避免hd下降沿对读取部分的影响;
+        start += q['qa_start_delay'][s] ## 修正hd与qa之间trigger导致的时序不准,正确启动QA pulse和demod窗口
+        
+        for _q in qubits:
+            _q['experiment_length'] = start
+            _q['do_readout'] = True
+
+        ## start to run experiment
+        data = runQ(qubits,devices)
+        print(np.asarray(data).shape)
+        ## analyze data and return
+        prob = tunneling(qubits,data,level=2)
+        ## multiply channel should unfold to a list for return result
+        result = prob
+        return result
+        
+    axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
+    result_list = RunAllExp(runSweeper,axes_scans)
+    return
 
 
 

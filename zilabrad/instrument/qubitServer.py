@@ -108,9 +108,9 @@ def RunAllExperiment(exp_devices,function,iterable,
                 dv.add(result_raw)
             return result_raws
         else:
-            data_send = swept_paras + result
+            data_send = list(swept_paras) + list(result)
+            dv.add(data_send)
 
-        
         if _noisy_printData == True:
             print(
                 str(np.round(data_send,4))
