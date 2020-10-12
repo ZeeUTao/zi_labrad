@@ -307,11 +307,11 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,
         
         data = runQ([q],devices)
 
-        for _d_ in data:
-            amp = np.mean(np.abs(_d_))/q.power_r ## unit: dB; only relative strength;
-            phase = np.mean(np.angle(_d_))
-            Iv = np.mean(np.real(_d_))
-            Qv = np.mean(np.imag(_d_))
+        _d_ = data[0]
+        amp = np.mean(np.abs(_d_))/q.power_r ## unit: dB; only relative strength;
+        phase = np.mean(np.angle(_d_))
+        Iv = np.mean(np.real(_d_))
+        Qv = np.mean(np.imag(_d_))
         result = [amp,phase,Iv,Qv]
         return result 
 
