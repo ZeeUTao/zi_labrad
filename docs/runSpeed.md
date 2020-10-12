@@ -1,6 +1,6 @@
 
 
-### Looping
+## Looping
 
 When use looping in python, a good way is using the generator in standard packages, like `range`, which is implemented in C. 
 
@@ -61,6 +61,32 @@ id1 = id(a[0])
 
 
 
+
+
+### Create initial array
+
+if we want to create [0,0,....0], or filling the array/list, using NumPy is a good choice
+
+```
+### from top to bottom cost time increase
+[0]*(int(1e7))
+np.zeros(int(1e7)) # numpy as np
+```
+
 Therefore, in the looping, 
 
 - try to decrease the assignment steps
+
+- Performance: 
+
+  standard function written by C  > NumPy > list operation
+
+- Do not frequently use type transform, like: `list(np.array([1,2,3...]))`
+
+  
+
+  
+
+### TODO
+
+import ctypes in python
