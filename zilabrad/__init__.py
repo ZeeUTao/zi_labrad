@@ -25,6 +25,7 @@ from zilabrad.instrument import zurichHelper
 from zilabrad.pyle.workflow import switchSession
 from zilabrad.instrument import waveforms
 
+from zilabrad.pyle.registry import RegistryWrapper
 
 
 """

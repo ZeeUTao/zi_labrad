@@ -22,22 +22,27 @@ import scipy.optimize
 
 from importlib import reload
 
-from zilabrad.instrument import *
 from zilabrad.instrument.zurichHelper import _check_device,_stop_device
-import zilabrad.instrument.waveforms as waveforms
+from zilabrad.instrument.qubitServer import loadQubits,dataset_create,RunAllExperiment
+from zilabrad.instrument.qubitServer import runQubits as runQ
+
+# from conf import loadInfo
+# from conf import qa,hd,mw,mw_r
+# qa,hd,mw,mw_r are objects (instance)
 
 import zilabrad.plots.adjuster
+import zilabrad.instrument.waveforms as waveforms
 from zilabrad.plots.dataProcess import datahelp
 from zilabrad.plots import dataProcess 
-
 """
 import for pylabrad
 """
-from zilabrad.pyle import *
+from zilabrad.pyle import sweeps
 
 import time
 import numpy as np
-
+from zilabrad.pyle.util import sweeptools as st
+from zilabrad.pyle.sweeps import checkAbort
 from labrad.units import Unit,Value
 _unitSpace = ('V','mV','us','ns','s','GHz','MHz','kHz','Hz','dBm','rad','None')
 V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l  = [Unit(s) for s in _unitSpace]

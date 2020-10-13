@@ -159,7 +159,14 @@ def cosine(amp=0.1,phase=0.0,start=0,end=None,freq=10e6,length=100e-9):
     envelopes = Envelope(timeFunc,None,start,end)
     return envelopes
 
-
+@convertUnits(start='s',end='s',freq='Hz',length='s')
+def readout(amp=0.1,phase=0.0,start=0,end=None,freq=10e6,length=100e-9):
+    if end is None: end = start + length
+    timeFunc1 = lambda t: amp*np.cos(2*pi*freq*(t-start)+phase)*(start<=t<end)
+    env1 = Envelope(timeFunc1,None,start,end)
+    timeFunc2 = lambda t: amp*np.sin(2*pi*freq*(t-start)+phase)*(start<=t<end)
+    env2 = Envelope(timeFunc2,None,start,end)
+    return env1,env2
 
 ## Collection of Array timeFunc, which returns an array
 
@@ -202,7 +209,7 @@ def func_with_envelope(amp=0.0,freq=10e6,
 
 
 @convertUnits(freq='Hz',start='s',end='s',length='s')
-def sine(amp=0.0,freq=10e6,
+def sineArray(amp=0.0,freq=10e6,
     start=0.,end=None,length=1e-6,
     fs=1.8e9):
     if end is None:
@@ -210,7 +217,7 @@ def sine(amp=0.0,freq=10e6,
     return amp * np.sin( freq * np.arange(start,end,1./fs) )
 
 @convertUnits(freq='Hz',start='s',end='s',length='s')
-def cosine(amp=0.0,freq=10e6,
+def cosineArray(amp=0.0,freq=10e6,
     start=0.,end=None,length=1e-6,
     fs=1.8e9):
     if end is None:
@@ -220,7 +227,7 @@ def cosine(amp=0.0,freq=10e6,
 
 
 @convertUnits(freq='Hz',start='s',end='s',length='s')
-def readoutPulse(amp=0.0,freq=10e6,
+def readoutArray(amp=0.0,freq=10e6,
     start=0.,end=None,length=1e-6,fs=1.8e9):
     """
     Args: fs (float): sampling rate
@@ -236,7 +243,7 @@ def readoutPulse(amp=0.0,freq=10e6,
     ]
 
 
-def readoutPulseMany(amps: list = [0.],freqs: list = [10e6],
+def readoutArrayMany(amps: list = [0.],freqs: list = [10e6],
     start: float = 0., end: float = 1e-6,length=1e-6,
     fs: float = 1.8e9):
     """
