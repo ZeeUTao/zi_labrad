@@ -123,6 +123,7 @@ class waveform(object):
         """
         Args:
             func: func(t) contains only Numpy function
+            func can also be wrapped by zilabrad.pyle.envelopes.Envelope
         """
         if fs == None:
             fs = self.fs 
@@ -132,17 +133,46 @@ class waveform(object):
         return func(np.arange(start,end,interval))
 
 
+
+## Collection of Envelope timeFunc
+## Envelope to define timefunction, which can be added, multiplied...
+
+
 @convertUnits(start='s',end='s',amp=None,length='s')
-def square(amp=1.0,start=0.,end=None,length=100e-9,fs=1.8e9):
+def square(start=50e-9,end=None,amp=1.0,length=100e-9):
+    if end is None: end = start + length
+    timeFunc = lambda t: amp*(start<=t<end)
+    envelopes = Envelope(timeFunc,None,start,end)
+    return envelopes
+
+@convertUnits(start='s',end='s',freq='Hz',length='s')
+def sine(amp=0.1,phase=0.0,start=0,end=None,freq=10e6,length=100e-9):
+    if end is None: end = start + length
+    timeFunc = lambda t: amp*np.sin(2*pi*freq*(t-start)+phase)*(start<=t<end)
+    envelopes = Envelope(timeFunc,None,start,end)
+    return envelopes
+
+@convertUnits(start='s',end='s',freq='Hz',length='s')
+def cosine(amp=0.1,phase=0.0,start=0,end=None,freq=10e6,length=100e-9):
+    if end is None: end = start + length
+    timeFunc = lambda t: amp*np.cos(2*pi*freq*(t-start)+phase)*(start<=t<end)
+    envelopes = Envelope(timeFunc,None,start,end)
+    return envelopes
+
+
+
+## Collection of Array timeFunc, which returns an array
+
+@convertUnits(start='s',end='s',amp=None,length='s')
+def squareArray(amp=1.0,start=0.,end=None,length=100e-9,fs=1.8e9):
     if end is None:
         end = start + length
-
     steps = ceil( (end-start)*fs)
     return amp*np.ones(steps)
 
 
 @convertUnits(freq='Hz',start='s',end='s',length='s')
-def spectroscopyPulse(amp=0.0,freq=10e6,phase=0.,
+def spectroscopyPulseArray(amp=0.0,freq=10e6,phase=0.,
     start=0.,end=None,length=1e-6,
     fs=1.8e9):
     """

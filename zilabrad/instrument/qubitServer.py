@@ -14,7 +14,7 @@ from zilabrad.instrument.zurichHelper import _mpAwg_init
 from zilabrad.instrument import waveforms
 
 import labrad
-from labrad.units import Unit,Value
+from zilabrad.pyle.units import Unit,Value
 _unitSpace = ('V','mV','us','ns','s','GHz','MHz','kHz','Hz','dBm','rad','None')
 V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l  = [Unit(s) for s in _unitSpace]
 
@@ -22,6 +22,10 @@ cxn = labrad.connect()
 dv = cxn.data_vault
 
 np.set_printoptions(suppress=True)
+
+
+_noisy_printData = True
+
 
 
 def loadQubits(sample, write_access=False):
@@ -95,7 +99,7 @@ def RunAllExperiment(exp_devices,function,iterable,
         else:
             return a[a.unit] 
 
-    _noisy_printData = True
+    
 
     def run(function, paras):
         # pass in all_paras to the function

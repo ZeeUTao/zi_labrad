@@ -22,7 +22,7 @@ from zilabrad.instrument import waveforms
 import zilabrad.instrument.qubitServer as qubitServer
 
 import labrad
-from labrad.units import Unit,Value
+from zilabrad.pyle.units import Unit,Value
 
 from qcodes.instrument.channel import ChannelList, InstrumentChannel
 

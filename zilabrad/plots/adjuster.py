@@ -15,8 +15,7 @@ import matplotlib.pyplot as plt
 from matplotlib import widgets
 from scipy import interpolate
 
-from labrad.units import Unit
-from labrad.types import Value
+from zilabrad.pyle.units import Unit,Value
 V, mV, us, ns, GHz, rad = [Unit(s) for s in ('V', 'mV', 'us', 'ns', 'GHz', 'rad')]
 
 
