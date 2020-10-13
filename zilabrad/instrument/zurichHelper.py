@@ -143,13 +143,6 @@ def _mpAwg_init(qubits:list,servers):
         raise Exception('Must set one readout frequency at least')
     qa.set_qubit_frequency(f_read)
 
-    # set 'microwave source [readout]'
-    # mw_r.set_power(q['readout_mw_power'])
-    # mw_r.set_freq(q['readout_mw_fc'])
-    # set 'microwave source [XY]'
-    # mw.set_power(q['xy_mw_power'])
-    # mw.set_freq(q['xy_mw_fc'])
-
     ## initialize waveforms and building 
     ### ----- finish ----- ###
     return 
@@ -723,7 +716,7 @@ class microwave_source(object):
                 self.set_output(1)
         except:
             self.bringup()
-            logging.info(mw.ip,'microwave_source bring up again.')
+            logging.info(self.ip,'microwave_source bring up again.')
 
 
 class yokogawa_dc_source(object):

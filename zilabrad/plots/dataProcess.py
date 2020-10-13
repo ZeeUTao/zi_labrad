@@ -28,7 +28,7 @@ from scipy.optimize import leastsq, curve_fit
 import sys
 
 # labrad module
-import zilabrad.plots.adjuster
+import zilabrad.plots.adjuster as adjuster
 import labrad
 from zilabrad.pyle.workflow import switchSession
 # labrad module end
@@ -327,8 +327,7 @@ def fitT1(dh,idx,dv=None,trange=40,data=None,doPlot=True,fig=None,title=''):
     return p[0], 1.0/p[1]       
 
 
-def updateIQraw2(dh,idx,Qb,dv=None,update=True,analyze=False):
-    data = dh.getDataset(idx,dv)
+def _updateIQraw2(data,Qb,dv=None,update=True,analyze=False):
     Is0,Qs0,Is1,Qs1 =data.T
     stats = len(Is0)
     if update:
@@ -352,7 +351,11 @@ def updateIQraw2(dh,idx,Qb,dv=None,update=True,analyze=False):
         sepPoint1 = sepPoint+np.cos(np.angle(center1-center0)+np.pi/2)*50.0+1j*np.sin(np.angle(center1-center0)+np.pi/2)*50.0
         sepPoint2 = sepPoint+np.cos(np.angle(center1-center0)-np.pi/2)*50.0+1j*np.sin(np.angle(center1-center0)-np.pi/2)*50.0
         plt.plot(np.real(np.array([sepPoint1,sepPoint,sepPoint2])), np.imag(np.array([sepPoint1,sepPoint,sepPoint2])), 'g-', lw=2)
+    return
 
+def UpdateIQraw2(dh,idx,Qb,dv=None,update=True,analyze=False):
+    data = dh.getDataset(idx,dv)
+    _updateIQraw2(data,Qb,dve,update,analyze)
     return
 
 def plotIQraw(dh,idx,dv=None,level=2):
@@ -411,9 +414,9 @@ def fitRamsey(dh,idx,fingefreq=0.002,sign=0,T1=13306,trange=[0,2],debug=False, f
  
     return p[1]
     
-if __name__=="__main__":
-    dh = datahelp()
-    cxn,dv,ss = _connect_labrad()
+# if __name__=="__main__":
+#     dh = datahelp()
+#     cxn,dv,ss = _connect_labrad()
     
     
     

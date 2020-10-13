@@ -136,22 +136,24 @@ def runQubits(qubits,exp_devices):
         _runQ_servers (list/tuple): instances used to control device
     
     TODO:
-        check _is_runfirst=True? Need run '_mpAwg_init' at first running
+        (1) check _is_runfirst=True? Need run '_mpAwg_init' at first running;
+        (2) clear q.xy/z/dc and their array after send();
     """
     qa,hd,mw,mw_r,wfs = exp_devices[:5]
     
     qbs_waveform,qbs_ports,qbs_r = [],[],[waveforms.NOTHING,waveforms.NOTHING]
     ## reload new waveform in this runQ
-    for q in qubits: ## 多比特
+    for q in qubits: ## multiple qubits case
         if 'dc' not in q.keys():
             q.dc = waveforms.square(amp=q['bias'],
                     start= -q['bias_start'],
                     end= q['bias_end']['s']+q['experiment_length'])
         
         if 'do_readout' in q.keys():
-            if 'r' not in q.keys():
-                q.demod_phase = q.qa_adjusted_phase[Hz]*(qa.adc_trig_delay_s) ## adjusted phase
-                q.r = waveforms.readout(amp=q.power_r,phase=q.demod_phase,freq=q.demod_freq,start=0,length=q.readout_len)
+            # if 'r' not in q.keys(): 
+            # print('phase:',q.qa_adjusted_phase[Hz]*(qa.adc_trig_delay_s))
+            q.demod_phase = q.qa_adjusted_phase[Hz]*(qa.adc_trig_delay_s) ## adjusted phase
+            q.r = waveforms.readout(amp=q.power_r,phase=q.demod_phase,freq=q.demod_freq,start=0,length=q.readout_len)
                 
         if hd.pulse_length_s != q['experiment_length']:
             hd.pulse_length_s = q['experiment_length']
@@ -176,10 +178,12 @@ def runQubits(qubits,exp_devices):
 
     wfs.set_tlist(origin=0,end=q.readout_len,fs=qa.FS)
     qbs_r_array = [wfs.func2array(qbs_r[i]) for i in [0,1]]
+
     if 'do_init' not in qubits[0].keys():
         _mpAwg_init(qubits,exp_devices[:4])
         qubits[0]['do_init']=True
         logging.info('do_init')
+
     hd.send_waveform(waveform=qbs_waveform, ports=qbs_ports)
     qa.send_waveform(waveform=qbs_r_array)
     ## start to run experiment
