@@ -41,7 +41,7 @@ from zilabrad.pyle import sweeps
 
 import time
 import numpy as np
-from zilabrad.pyle.util import sweeptools as st
+from zilabrad.pyle.util import sweeptools
 from zilabrad.pyle.sweeps import checkAbort
 from labrad.units import Unit,Value
 _unitSpace = ('V','mV','us','ns','s','GHz','MHz','kHz','Hz','dBm','rad','None')
