@@ -38,7 +38,7 @@ from zilabrad.pyle import *
 import time
 import numpy as np
 
-
+from labrad.units import Unit,Value
 _unitSpace = ('V','mV','us','ns','s','GHz','MHz','kHz','Hz','dBm','rad','None')
 V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l  = [Unit(s) for s in _unitSpace]
 ar = sweeptools.r
@@ -240,7 +240,7 @@ def example_s21_scan(sample,measure=0,freq=6.0*GHz,delay=0*ns,
 
 
 @expfunc_decorator
-def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,
+def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phase=0,
     mw_power=None,bias=None,power=None,sb_freq=None,
     name='s21_scan',des='',back=False):
     """ 
@@ -269,7 +269,7 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,
 
     ## set some parameters name;
     axes = [(freq,'freq'),(bias,'bias'),(power,'power'),(sb_freq,'sb_freq'),(mw_power,'mw_power'),
-            (delay,'delay')]
+            (delay,'delay'),(phase,'phase')]
     deps = [('Amplitude','s21 for','a.u.'),('Phase','s21 for','rad'),
                 ('I','',''),('Q','','')]
     kw = {'stats': stats}
@@ -278,23 +278,36 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,
     dataset = sweeps.prepDataset(sample, name+des, axes, deps,kw=kw)
     dataset_create(dataset)
 
+
+    # daq=exp_devices[0].daq
+    # daq.setInt('/dev2591/awgs/0/outputs/*/mode',1) ## modu
+    # daq.setInt('/dev2591/qas/0/integration/mode', 1) ## spec
+    # daq.setDouble('/dev2591/oscs/0/freq',q.demod_freq) ## freq
+    # daq.setDouble('/dev2591/qas/0/deskew/rows/*/cols/*', 1) ## set matrix[11,11]
+
     def runSweeper(devices,para_list):
-        freq,bias,power,sb_freq,mw_power,delay = para_list
+        freq,bias,power,sb_freq,mw_power,delay,phase = para_list
         q.power_r = power2amp(power)
         q['readout_mw_fc'] = (freq - q.demod_freq)*Hz
+        # q.demod_freq = freq - q['readout_mw_fc'][Hz]
+        # exp_devices[0].set_qubit_frequency([q.demod_freq])
 
         start = 0   
         q.z = waveforms.square(amp=0)
         q.xy = [waveforms.square(amp=0),waveforms.square(amp=0)]
         q['bias'] = bias
-        
+
         start += delay
         start += 100e-9 
         start += q['qa_start_delay']['s']
-        
+
         q['experiment_length'] = start
         q['do_readout'] = True
-        
+
+        q.dc = waveforms.square(amp=q['bias'],start=-q['bias_start'],end=q['bias_end']['s']+q['experiment_length'])
+        ## q.demod_phase = q.qa_adjusted_phase[Hz]*(qa.adc_trig_delay_s) ## adjusted phase
+        q.r = waveforms.readout(amp=q.power_r,phase=q.demod_phase+phase,freq=q.demod_freq,start=0,length=q.readout_len)
+
         data = runQ([q],devices)
 
         for _d_ in data:

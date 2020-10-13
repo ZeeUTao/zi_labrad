@@ -14,7 +14,7 @@ from zilabrad.instrument.zurichHelper import _mpAwg_init
 from zilabrad.instrument import waveforms
 
 import labrad
-from zilabrad.pyle.units import Unit,Value
+from labrad.units import Unit,Value
 _unitSpace = ('V','mV','us','ns','s','GHz','MHz','kHz','Hz','dBm','rad','None')
 V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l  = [Unit(s) for s in _unitSpace]
 
@@ -151,31 +151,36 @@ def runQubits(qubits,exp_devices):
     qbs_waveform,qbs_ports,qbs_r = [],[],[waveforms.NOTHING,waveforms.NOTHING]
     ## reload new waveform in this runQ
     for q in qubits: ## multiple qubits case
-        if 'dc' not in q.keys():
-            q.dc = waveforms.square(amp=q['bias'],
-                    start= -q['bias_start'],
-                    end= q['bias_end']['s']+q['experiment_length'])
-        
-        if 'do_readout' in q.keys():
-            # if 'r' not in q.keys(): 
-            # print('phase:',q.qa_adjusted_phase[Hz]*(qa.adc_trig_delay_s))
-            q.demod_phase = q.qa_adjusted_phase[Hz]*(qa.adc_trig_delay_s) ## adjusted phase
-            q.r = waveforms.readout(amp=q.power_r,phase=q.demod_phase,freq=q.demod_freq,start=0,length=q.readout_len)
-                
-        if hd.pulse_length_s != q['experiment_length']:
-            hd.pulse_length_s = q['experiment_length']
-            qa.set_adc_trig_delay(q['bias_start'][s]+hd.pulse_length_s)
-
+        ## HD awgs
         wfs.set_tlist(origin=-q['bias_start'],end=q['bias_end']['s']+q['experiment_length'],fs=hd.FS)
-        q.xy_array = [wfs.func2array((q.xy)[i]) for i in [0,1]]
-        q.z_array = [wfs.func2array(q.z)]
-        q.dc_array = [wfs.func2array(q.dc)]
+        ## line [dc]
+        if 'dc' in q.keys():
+            qbs_waveform += [wfs.func2array(q.dc)]
+            qbs_ports += [q.channels['dc']]
+
+        ## line [xy]
+        if 'xy' in q.keys():
+            qbs_waveform += [wfs.func2array((q.xy)[i]) for i in [0,1]]
+            qbs_ports += [q.channels['xy_I'],q.channels['xy_Q']]
+
+        ## line [z]
+        if 'z' in q.keys():
+            qbs_waveform += [wfs.func2array(q.z)]
+            qbs_ports += [q.channels['z']]
+
+        ## QA awgs
+        if 'do_readout' in q.keys():
+            if 'r' in q.keys(): 
+                qbs_r[0] += q.r[0]
+                qbs_r[1] += q.r[1]
+            else:
+                print('Error! No readout pulse!')
+                ## q.r = waveforms.readout(amp=q.power_r,phase=q.demod_phase,freq=q.demod_freq,start=0,length=q.readout_len)
+
+    if hd.pulse_length_s != qubits[0]['experiment_length']:
+        hd.pulse_length_s = qubits[0]['experiment_length']
+        qa.set_adc_trig_delay(q['bias_start'][s]+hd.pulse_length_s)
         
-        qbs_waveform += q.xy_array+q.dc_array+q.z_array
-        qbs_ports += [q.channels['xy_I'],q.channels['xy_Q'],q.channels['dc'],q.channels['z']]
-        
-        qbs_r[0] += q.r[0]
-        qbs_r[1] += q.r[1]
     ## set 'microwave source [readout]'
     mw_r.set_freq(q['readout_mw_fc'])
     mw_r.set_power(q['readout_mw_power'])

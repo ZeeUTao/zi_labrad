@@ -3,7 +3,7 @@ import random
 
 import numpy as np
 
-from labrad.units import Value, Unit
+from zilabrad.pyle.units import Value, Unit
 
 
 def iterable(x):

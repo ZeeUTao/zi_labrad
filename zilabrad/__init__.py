@@ -20,7 +20,7 @@ __all__ = [
 ]
 
 
-from zilabrad import mp
+# from zilabrad import mp
 from zilabrad.instrument import zurichHelper
 from zilabrad.pyle.workflow import switchSession
 from zilabrad.instrument import waveforms

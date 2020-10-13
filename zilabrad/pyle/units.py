@@ -60,8 +60,8 @@ from math import floor, pi
 
 import numpy as np
 
-from labrad import grammar
-from labrad.util import cache
+from zilabrad.pyle import grammar
+from zilabrad.pyle.util import cache
 
 # Dictionary containing numbers
 #

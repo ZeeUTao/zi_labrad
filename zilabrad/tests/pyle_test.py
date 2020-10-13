@@ -5,10 +5,19 @@
 from functools import wraps
 import logging
 import time
+import numpy as np
 
+from zilabrad.instrument.qubitServer import loadQubits,dataset_create,RunAllExperiment
+from zilabrad.instrument.qubitServer import runQubits
 
-from zilabrad.instrument import *
-from zilabrad.pyle import *
+from zilabrad.instrument import qubitServer
+# for sweep/looping
+from zilabrad.pyle import sweeps
+from zilabrad.pyle.sweeps import gridSweep,checkAbort
+from zilabrad.pyle.util import sweeptools
+
+# for physical units, GHz, ns, ...
+from labrad.units import Unit,Value
 
 
 _unitSpace = ('V','mV','us','ns','s','GHz','MHz','kHz','Hz','dBm','rad','None')
@@ -71,9 +80,9 @@ def testing_runQ(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,power=-30.0
 
     def runSweeper(devices,para_list):
         freq,power,delay = para_list
-        print(power)
         q.power_r = 10**(power/20-0.5)
         data = runDummy([q],devices)
+        time.sleep(0.1)
         for _d_ in data:
             amp = np.mean(np.abs(_d_))/q.power_r ## unit: dB; only relative strength;
             phase = np.mean(np.angle(_d_))

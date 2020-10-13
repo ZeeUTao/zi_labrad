@@ -22,9 +22,7 @@ from zilabrad.instrument import waveforms
 import zilabrad.instrument.qubitServer as qubitServer
 
 import labrad
-from zilabrad.pyle.units import Unit,Value
-
-from qcodes.instrument.channel import ChannelList, InstrumentChannel
+from labrad.units import Unit,Value
 
 ar = st.RangeCreator()
 _unitSpace = ('V','mV','us','ns','s','GHz','MHz','kHz','Hz','dBm','rad','None')
@@ -51,21 +49,21 @@ def loadInfo(paths=['Servers','devices']):
 def bringup_device(modes):
     dev = loadInfo(paths=['Servers','devices']) ## only read
     for m in modes: 
+        if m == 0:
+            qa = zH.zurich_qa(device_id=dev.['zi_qa_id'],labone_ip=dev.['labone_ip'])
+            devices[m] = qa
         if m == 1:
-            qa = zH.zurich_qa(dev.zi_qa_id)
-            devices[m-1] = qa
+            hd = zH.zurich_hd(device_id=dev['zi_hd_id'],labone_ip=dev.['labone_ip'])
+            devices[m] = hd
         if m == 2:
-            hd = zH.zurich_hd(dev.zi_hd_id)
-            devices[m-1] = hd
-        if m == 3:
             mw = zH.microwave_source(dev.microwave_source_xy,'mw')
-            devices[m-1] = mw
-        if m == 4:
+            devices[m] = mw
+        if m == 3:
             mw_r = zH.microwave_source(dev.microwave_source_readout,'mw_r')
-            devices[m-1] = mw_r
-        if m == 5:
+            devices[m] = mw_r
+        if m == 4:
             wfs = waveforms.waveform()
-            devices[m-1] = wfs
+            devices[m] = wfs
     return       
 
 
@@ -104,7 +102,7 @@ devices[0].noisy = True
 """
 from zilabrad import *
 
-_default_modes = [1,2,3,4,5]
+_default_modes = [0,1,2,3,4]
 
 
 
