@@ -127,6 +127,9 @@ def RunAllExperiment(exp_devices,function,iterable,
     return result_list
 
 
+def get_qubits_paras(qubits: dict, key: str):
+    return [_qubit[key] for _qubit in qubits]
+
 
 def runQubits(qubits,exp_devices):
     """ generally for running multiqubits
