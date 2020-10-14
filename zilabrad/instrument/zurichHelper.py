@@ -148,7 +148,7 @@ def _mpAwg_init(qubits:list,servers):
             f_read += [qb.demod_freq]
     if len(f_read) == 0:
         raise Exception('Must set one readout frequency at least')
-    qa.set_qubit_frequency(f_read)
+    qa.set_qubit_frequency(f_read) ##
 
     ## initialize waveforms and building 
     qa.update_wave_length()
@@ -221,6 +221,8 @@ class zurich_qa(object):
         self.daq.sync() ## 同步设置
         print('%s: Complete Initialization'%self.id)
 
+    def reset_zi(self):
+        print('关机重启吧！！')
 
     ####--AWG波形设置部分--####
     @convertUnits(delay='s', readout_delay='s')
@@ -299,7 +301,7 @@ class zurich_qa(object):
         #awg_prgram 是一个字符串，AWG 程序
         #awg_index 是AWG的序列号， 当grouping 是4x2的时候，有4个AWG. awg_index = 0 时，即第一个AWG, 控制第一和第二个通道"""
         awgModule = self.daq.awgModule()
-        awgModule.set('awgModule/device', self.device)
+        awgModule.set('awgModule/device', self.id)
         awgModule.set('awgModule/index', awg_index)# AWG 0, 1, 2, 3
         awgModule.execute()
         awgModule.set('awgModule/compiler/sourcestring', awg_program)
@@ -337,7 +339,12 @@ class zurich_qa(object):
 
     def update_wave_length(self):
         qainfo = self.daq.getList('/{:s}/awgs/0/waveform/waves/0'.format(self.id))
-        self.waveform_length = int(len(qainfo[0][1][0]['vector'])/2) ## qalen has double channel wave;
+        if len(qainfo)==0:
+            self.waveform_length = 0
+        elif len(qainfo)==1:
+            self.waveform_length = int(len(qainfo[0][1][0]['vector'])/2) ## qalen has double channel wave;
+        else:
+            raise Exception('Unknown QA infomation:\n',qainfo)
 
     def send_waveform(self,waveform=[[0],[0]],check=False):
         if check:
@@ -542,6 +549,9 @@ class zurich_hd(object):
         self.daq.sync()
         print('%s: Complete Initialization'%self.id.upper())
 
+    def reset_zi(self):
+        print('关机重启吧！！')
+
     def awg_builder(self,waveform=[[0]],ports=[],awg_index=0):
         """
         根据波形构建一个awg 程序， waveform的波形同时播放，可以工作在被触发模式trigger =1 
@@ -620,7 +630,12 @@ class zurich_hd(object):
 
     def update_wave_length(self):
         hdinfo = self.daq.getList('/{:s}/awgs/0/waveform/waves/0'.format(self.id))
-        self.waveform_length = int(len(hdinfo[0][1][0]['vector'])/2) ## qalen has double channel wave;
+        if len(hdinfo)==0:
+            self.waveform_length = 0
+        elif len(hdinfo)==1:
+            self.waveform_length = int(len(hdinfo[0][1][0]['vector'])/2) ## qalen has double channel wave;
+        else:
+            raise Exception('Unknown QA infomation:\n',qainfo)
        
     def send_waveform(self,waveform=[[0],[0]],ports=[],check=False):
         if check:
