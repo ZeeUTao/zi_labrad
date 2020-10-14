@@ -92,11 +92,16 @@ class waveform(object):
     # w_qa = waveform()
     # w_qa(env)
     # on the other hand, some frequently used waveforms are provided below
-
-
-    def func2array_withoutNumpy(self,envelope,
-        start: float,
-        end: float,
+    
+    
+    def set_tlist(self,start,end,fs):
+        self.start = start
+        self.end = end
+        self.fs = fs
+        
+    def func2array_withoutNumpy(self,func,
+        start: float = 0.,
+        end: float = 0.,
         fs: None or float = None):
         """
         Try to use numpy, or it will be slow in python
@@ -104,8 +109,10 @@ class waveform(object):
         if fs == None:
             fs = self.fs
 
-        start = envelope.start
-        end = envelope.end
+        if hasattr(func,'start') and start == None: 
+            start = func.start
+        if hasattr(func,'end') and end == None:            
+            end = func.end
 
         if end <= start:
             return []
@@ -115,10 +122,9 @@ class waveform(object):
 
         return [func(start + idx*interval) for idx in range(steps)]
         
- 
-    def func2array(self,func,
-        start: float,
-        end: float,
+    def func2array_withNumpy(self,func,
+        start: float = 0.,
+        end: float = 0.,
         fs: None or float = None):
         """
         Args:
@@ -127,10 +133,32 @@ class waveform(object):
         """
         if fs == None:
             fs = self.fs 
+        if hasattr(func,'start') and start == None: 
+            start = func.start
+        if hasattr(func,'end') and end == None:            
+            end = func.end
         if end <= start:
             return []
+
         interval = 1./fs
         return func(np.arange(start,end,interval))
+        
+    def func2array(self,func,
+        start: float = 0.,
+        end: float = 0.,
+        fs: None or float = None):
+        """
+        Args:
+            func: func(t) contains only Numpy function
+            func can also be wrapped by zilabrad.pyle.envelopes.Envelope
+        """
+        try:
+            result = self.func2array_withNumpy(func,start,end,fs)
+        except:
+            result = self.func2array_withoutNumpy(func,start,end,fs)
+            return result
+        else:
+            return result
 
 
 

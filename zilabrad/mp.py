@@ -86,8 +86,8 @@ logging setting
 
 def RunAllExp(*args):
     qa,hd,mw,mw_r = exp_devices[:4]
-    RunAllExperiment(exp_devices,*args)
-    return
+    result = RunAllExperiment(exp_devices,*args)
+    return result
     
 
 def stop_device():
@@ -97,7 +97,7 @@ def stop_device():
 
 def check_device():
     qa,hd,mw,mw_r = exp_devices[:4]
-    _check_device(mw,mw_r)
+    # _check_device(mw,mw_r)
     return
 
 def gridSweep(axes):
@@ -200,7 +200,7 @@ def example_s21_scan(sample,measure=0,freq=6.0*GHz,delay=0*ns,
 
     # create dataset
     dataset = sweeps.prepDataset(sample, name+des, axes, deps,kw=kw)
-    # dataset_create(dataset)
+    dataset_create(dataset)
 
 
     def runSweeper(devices,para_list):
@@ -282,7 +282,7 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phase=0,
     # create dataset
     dataset = sweeps.prepDataset(sample, name+des, axes, deps,kw=kw)
     dataset_create(dataset)
-
+    
 
     # daq=exp_devices[0].daq
     # daq.setInt('/dev2591/awgs/0/outputs/*/mode',1) ## modu
