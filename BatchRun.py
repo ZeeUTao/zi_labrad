@@ -50,10 +50,10 @@ def bringup_device(modes):
     dev = loadInfo(paths=['Servers','devices']) ## only read
     for m in modes: 
         if m == 0:
-            qa = zH.zurich_qa(device_id=dev.['zi_qa_id'],labone_ip=dev.['labone_ip'])
+            qa = zH.zurich_qa(device_id=dev['zi_qa_id'],labone_ip=dev['labone_ip'])
             devices[m] = qa
         if m == 1:
-            hd = zH.zurich_hd(device_id=dev['zi_hd_id'],labone_ip=dev.['labone_ip'])
+            hd = zH.zurich_hd(device_id=dev['zi_hd_id'],labone_ip=dev['labone_ip'])
             devices[m] = hd
         if m == 2:
             mw = zH.microwave_source(dev.microwave_source_xy,'mw')

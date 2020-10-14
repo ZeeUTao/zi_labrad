@@ -215,15 +215,15 @@ def makeSequence_AWG(waveServer,qubits,FS):
         ## line [DC]
         if 'dc' in q.keys():
             wave_AWG += [waveServer.func2array(q.dc,start,end,FS)]
-            print(np.asarray(wave_AWG[-1]).shape)
+            
         ## line [xy] I,Q
         if 'xy' in q.keys():
             wave_AWG += [waveServer.func2array((q.xy)[i],start,end,FS) for i in [0,1]]
-            print(np.asarray(wave_AWG[-1]).shape)
+            
         ## line [z]
         if 'z' in q.keys():
             wave_AWG += [waveServer.func2array(q.z,start,end,FS)]
-            print(np.asarray(wave_AWG[-1]).shape)
+            
     print(np.asarray(wave_AWG))
     return wave_AWG
 
@@ -253,9 +253,9 @@ def runQubits(qubits,exp_devices):
     
     
     ## Now it is only two microwave sources, in the future, it should be modified
-    # set_microwaveSource(deviceList = [mw,mw_r],
-                        # freqList = [q_ref['xy_mw_fc'],q_ref['readout_mw_fc']],
-                        # powerList = [q_ref['xy_mw_power'],q_ref['readout_mw_power']])
+    set_microwaveSource(deviceList = [mw,mw_r],
+                        freqList = [q_ref['xy_mw_fc'],q_ref['readout_mw_fc']],
+                        powerList = [q_ref['xy_mw_power'],q_ref['readout_mw_power']])
 
 
     # initialization
