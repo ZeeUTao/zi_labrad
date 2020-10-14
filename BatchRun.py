@@ -12,7 +12,7 @@ To reload mp, you can call 'reload_mp', which fed 'devices' to mp.exp_devices
 from importlib import reload
 import configparser
 import os
-
+import numpy as np
 from zilabrad.pyle.registry import RegistryWrapper
 from zilabrad.instrument import zurichHelper as zH
 from zilabrad.pyle.workflow import switchSession
@@ -23,7 +23,6 @@ import zilabrad.instrument.qubitServer as qubitServer
 
 import labrad
 from labrad.units import Unit,Value
-
 
 ar = st.RangeCreator()
 _unitSpace = ('V','mV','us','ns','s','GHz','MHz','kHz','Hz','dBm','rad','None')
@@ -50,27 +49,22 @@ def loadInfo(paths=['Servers','devices']):
 def bringup_device(modes):
     dev = loadInfo(paths=['Servers','devices']) ## only read
     for m in modes: 
+        if m == 0:
+            qa = zH.zurich_qa(device_id=dev['zi_qa_id'],labone_ip=dev['labone_ip'])
+            devices[m] = qa
         if m == 1:
-            qa = zH.zurich_qa(dev.zi_qa_id)
-            devices[m-1] = qa
+            hd = zH.zurich_hd(device_id=dev['zi_hd_id'],labone_ip=dev['labone_ip'])
+            devices[m] = hd
         if m == 2:
-            hd = zH.zurich_hd(dev.zi_hd_id)
-            devices[m-1] = hd
-        if m == 3:
             mw = zH.microwave_source(dev.microwave_source_xy,'mw')
-            devices[m-1] = mw
-        if m == 4:
+            devices[m] = mw
+        if m == 3:
             mw_r = zH.microwave_source(dev.microwave_source_readout,'mw_r')
-            devices[m-1] = mw_r
-        if m == 5:
+            devices[m] = mw_r
+        if m == 4:
             wfs = waveforms.waveform()
-            devices[m-1] = wfs
+            devices[m] = wfs
     return       
-            
-"""Instance: physical units
-
-defined via Unit(class) from labrad.units
-"""
 
 
 
@@ -96,31 +90,36 @@ def update_session(user='hwh'):
 
 
 
-def reload_mp():
-    reload(mp)
-    mp.exp_devices = devices
+mpreload = r'reload(mp);mp.exp_devices=devices'
+"""
+Quick commands:
 
-    
-_default_modes = [1,2,3,4,5]
+exec(mpreload)
+#quick eval command, example:
 
-import zilabrad.mp as mp
+devices[0].noisy = True
+#devices will print some strings about running
+"""
+from zilabrad import *
 
-user = input("Enter user (default: hwh)") or "hwh"
-ss = update_session(user=user)
-
-do_bringup = input("Skip Bringup? (enter 0 for skip, default 1)") or 1
-if do_bringup != '0':
-    devices = [None]*len(_default_modes)
-    modes = _default_modes
-    
-    bringup_device(modes=modes)
-    mp.exp_devices = devices
-    for dev in mp.exp_devices:
-        print(dev.__class__.__name__)
-    
-
-from zilabrad.instrument import zurichHelper
+_default_modes = [0,1,2,3,4]
 
 
-reload(zurichHelper)
+
+if __name__ == '__main__':
+    user = input("Enter user (default: hwh)") or "hwh"
+    ss = update_session(user=user)
+
+
+    do_bringup = input("Skip Bringup? (enter 0 for skip, default 1)") or 1
+    if do_bringup != '0':
+        devices = [None]*len(_default_modes)
+        modes = _default_modes
+        
+        bringup_device(modes=modes)
+        mp.exp_devices = devices
+        for dev in mp.exp_devices:
+            print(dev.__class__.__name__)
+    from zilabrad.instrument import zurichHelper
+    reload(zurichHelper)
 

@@ -154,6 +154,19 @@ def run(func, sweep, save=True, dataset=None,
         for _ in iter: pass
 
 
+def gridSweep(axes):
+    if not len(axes):
+        yield (), ()
+    else:
+        (param, _label), rest = axes[0], axes[1:]
+        if np.iterable(param): # TODO: different way to detect if something should be swept
+            for val in param:
+                for all, swept in gridSweep(rest):
+                    yield (val,) + all, (val,) + swept
+        else:
+            for all, swept in gridSweep(rest):
+                yield (param,) + all, swept
+
 def grid(func, axes, **kw):
     """Run a pipelined sweep on a grid over the given list of axes.
     
@@ -165,18 +178,6 @@ def grid(func, axes, **kw):
     
     All other keyword arguments to this function are passed directly to run.
     """
-    def gridSweep(axes):
-        if not len(axes):
-            yield (), ()
-        else:
-            (param, _label), rest = axes[0], axes[1:]
-            if np.iterable(param): # TODO: different way to detect if something should be swept
-                for val in param:
-                    for all, swept in gridSweep(rest):
-                        yield (val,) + all, (val,) + swept
-            else:
-                for all, swept in gridSweep(rest):
-                    yield (param,) + all, swept
     
     # pass in all params to the function, but only prepend swept params to data
     def wrapped(server, args):
