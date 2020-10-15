@@ -11,7 +11,7 @@ Python Modules for Devices control in SUSTech lab.
 
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 4
 
    about.md
    start/index
