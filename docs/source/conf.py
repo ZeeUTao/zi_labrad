@@ -13,12 +13,15 @@
 import os
 import sys
 project_path = r'../../zilabrad'
+
+
 sys.path.insert(0, os.path.abspath(project_path))
+sys.path.insert(1, os.path.abspath("../.."))
 
 # ...
 
 apidoc_module_dir = project_path
-apidoc_output_dir = '_python_apis'
+apidoc_output_dir = 'python_apis'
 # apidoc_excluded_paths = ['tests']
 apidoc_separate_modules = True
 
@@ -44,15 +47,14 @@ extensions = [
     'sphinx.ext.viewcode',
     'm2r2'
 ]
-source_suffix = ['.rst', '.md'] 
 
 # Add any paths that contain templates here, relative to this directory.
-templates_path = ['_templates']
+templates_path = ["_templates"]
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = []
+exclude_patterns = ["_build", "**.ipynb_checkpoints"]
 
 
 # -- Options for HTML output -------------------------------------------------
@@ -60,12 +62,27 @@ exclude_patterns = []
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-# html_theme = 'alabaster'
-import sphinx_rtd_theme
 html_theme = "sphinx_rtd_theme"
-html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
+html_static_path = ["_static"]
+
+# Napoleon settings
+napoleon_google_docstring = True
+napoleon_numpy_docstring = False
+napoleon_include_init_with_doc = False
+napoleon_include_private_with_doc = False
+napoleon_include_special_with_doc = True
+napoleon_use_admonition_for_examples = True
+napoleon_use_admonition_for_notes = False
+napoleon_use_admonition_for_references = False
+napoleon_use_ivar = False
+napoleon_use_param = True
+napoleon_use_rtype = True
+
+# nbsphinx parameters
+
+nbsphinx_codecell_lexer = "none"
+highlight_language = "none"

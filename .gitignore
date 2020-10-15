@@ -37,8 +37,8 @@ MANIFEST
 
 # Sphinx documentation
 docs/_build/
-docs/_python_apis
-docs/source/_python_apis
+docs/python_apis
+docs/source/python_apis
 
 # Installer logs
 pip-log.txt

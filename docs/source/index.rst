@@ -3,6 +3,10 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
+|
+|
+|
+
 zilabrad's documentation!
 =====================================
 
@@ -11,15 +15,22 @@ Python Modules for Devices control in SUSTech lab.
 
 
 .. toctree::
-   :maxdepth: 4
-
+   :maxdepth: 2
+   :caption: Contents
+   :glob:
+   
    about.md
    start/index
    Core/index
    labrad.md
    code-style.md
    
+.. toctree::
+   :maxdepth: 2
+   :caption: API References:
+   :glob:
    
+   python_apis/modules
 
    
    
@@ -30,3 +41,4 @@ Indices and tables
 * :ref:`modindex`
 * :ref:`search`
 
+.. _github: https://github.com/ZeeUTao/zi_labrad
