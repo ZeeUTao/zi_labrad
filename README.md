@@ -6,7 +6,7 @@ python script to control Zurich instruments by using labrad.
 
 ## Requirements
 
-- python3, (suggested: 3.6.4)
+- python3, (suggested: 3.6，3.7)
 
 - [scalabrad](https://github.com/ZeeUTao/scalabrad)
 
