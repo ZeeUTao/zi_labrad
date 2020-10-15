@@ -10,6 +10,10 @@ import zhinst.utils ## create API object
 import textwrap ## to write sequencer's code
 import time ## show total time in experiments
 import matplotlib.pyplot as plt ## give picture
+## if pyplot failed pip install -v matplotlib==2.2.2, s
+## see
+## https://stackoverflow.com/questions/52458461/import-matplotlib-pyplot-as-plt-failed
+
 import numpy as np 
 from math import ceil,pi
 
@@ -118,7 +122,7 @@ def _stop_device(*servers:object):
     return
 
 
-def _mpAwg_init(qubits:list,servers):
+def _mpAwg_init(qubits: list, servers: list):
     """
     prepare and Returns waveforms
     Args:
