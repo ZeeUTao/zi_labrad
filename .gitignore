@@ -35,6 +35,11 @@ MANIFEST
 *.manifest
 *.spec
 
+# Sphinx documentation
+docs/_build/
+docs/python_apis
+docs/source/python_apis
+
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt

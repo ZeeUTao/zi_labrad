@@ -1,6 +1,10 @@
+# 关于性能
 
 
-## Looping
+
+
+
+## 循环
 
 When use looping in python, a good way is using the generator in standard packages, like `range`, which is implemented in C. 
 
