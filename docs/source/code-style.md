@@ -1,3 +1,13 @@
+# Style
+
+
+
+## Git
+
+using .git to implement version control. 
+
+
+
 ## Naming
 
 - class: `MyClass`
