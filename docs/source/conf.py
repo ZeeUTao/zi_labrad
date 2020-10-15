@@ -25,7 +25,7 @@ apidoc_separate_modules = True
 
 # -- Project information -----------------------------------------------------
 
-project = 'zi_labrad'
+project = 'zilabrad'
 copyright = '2020, Ziyu Tao'
 author = 'Ziyu Tao'
 
