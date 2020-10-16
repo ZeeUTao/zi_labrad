@@ -1,3 +1,3 @@
-# 简介
+# About
 
-Modules for Devices control  in SUSTech lab
+Modules for Devices control in SUSTech lab

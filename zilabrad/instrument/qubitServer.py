@@ -18,13 +18,12 @@ from labrad.units import Unit,Value
 _unitSpace = ('V','mV','us','ns','s','GHz','MHz','kHz','Hz','dBm','rad','None')
 V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l  = [Unit(s) for s in _unitSpace]
 
-cxn = labrad.connect()
-dv = cxn.data_vault
+
 
 np.set_printoptions(suppress=True)
 
 
-_noisy_printData = True
+_noisy_printData = False
 
 
 
@@ -55,13 +54,16 @@ def loadQubits(sample, write_access=False):
 
 
 
-def dataset_create(dataset,dv=dv):
+def dataset_create(dataset):
     """Create the dataset. 
     see 
     dataset = sweeps.prepDataset(*args)
     dv = labrad.connect().dataVault
     dataVault script is in "/server/py3_data_vault"
     """
+    cxn = labrad.connect()
+    dv = cxn.data_vault
+    
     dv.cd(dataset.path, dataset.mkdir)
     logging.info(dataset.dependents)
     logging.info(dataset.independents)
@@ -101,7 +103,9 @@ def RunAllExperiment(exp_devices,function,iterable,
         iterable: iterated over to produce values that are fed to function as parameters.
         collect: if True, collect the result into an array and return it; else, return an empty list
     """
-
+    cxn = labrad.connect()
+    dv = cxn.data_vault
+    
     def run(function, paras):
         # pass in all_paras to the function
         all_paras = [Unit2SI(a) for a in paras[0]]
@@ -224,7 +228,6 @@ def makeSequence_AWG(waveServer,qubits,FS):
         if 'z' in q.keys():
             wave_AWG += [waveServer.func2array(q.z,start,end,FS)]
             
-    print(np.asarray(wave_AWG))
     return wave_AWG
 
 

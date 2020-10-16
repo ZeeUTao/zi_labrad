@@ -1,10 +1,10 @@
-# 关于性能
+# Running speed
 
 
 
 
 
-## 循环
+## Loop
 
 When use looping in python, a good way is using the generator in standard packages, like `range`, which is implemented in C. 
 
@@ -93,4 +93,3 @@ Therefore, in the looping,
 
 ### TODO
 
-import ctypes in python
