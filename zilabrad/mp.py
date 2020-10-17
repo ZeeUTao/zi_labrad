@@ -505,7 +505,7 @@ def IQraw(sample,measure=0,stats=1024,update=False,analyze=False,reps=1,
     
 
     result_list = RunAllExp(runSweeper,axes_scans,dataset,collect,raw)
-    data = np.asarray(result_list[0]).T
+    data = np.asarray(result_list[0])
     print(data)
     if update:
         dataProcess._updateIQraw2(data=data,Qb=q,dv=None,update=update,analyze=analyze)
