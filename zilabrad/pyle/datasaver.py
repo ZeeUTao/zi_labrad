@@ -67,7 +67,8 @@ class Dataset(object):
         """Wait for pending requests and disconnect from the data vault.""" 
         try:
             for req in self.requests:
-                req.wait()
+                req.running()
+        except: pass
         finally:
             if self.closeCxn:
                 cxn = self.cxn
@@ -97,9 +98,10 @@ class Dataset(object):
         p.new(self.name, self.independents, self.dependents)
         if len(self.params):
             p.add_parameters(tuple(self.params))
-        self.requests.append(p.send(wait=False))
+        self.requests.append(p.send_future())
         self.created = True
     
+    # see concurrent.futures.Future
     def add(self, data):
         """Add data to this dataset.
         
@@ -110,17 +112,18 @@ class Dataset(object):
         if self.lazy and not self.created:
             self._create() # make sure the dataset has been created
         if len(self.requests) >= self.delay:
-            result = self.requests.pop(0).wait()
+            result = self.requests.pop(0)
             if self.first_request:
                 # the first request is to create the dataset, so the
                 # response contains our path and the name assigned by the
                 # data vault.  This name has a number prefix to make it
                 # unique.  We pull out this number so it can be used
                 # later if we need to retrieve the dataset.
-                self.path, self.fullName = result['new']
-                self.num = int(self.fullName.split(' - ')[0])
+                pass
+                # self.path, self.fullName = result['new']
+                # self.num = int(self.fullName.split(' - ')[0])
                 self.first_request = False
-        self.requests.append(self.server.add(data, context=self.context, wait=False))
+        self.requests.append(self.server.add(data, context=self.context))
         return data
     
     def capture(self, iterable):

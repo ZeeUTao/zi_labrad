@@ -8,10 +8,13 @@ Created on 2020.10.06
 
 import numpy as np
 from math import ceil,pi
-from zilabrad.pyle.envelopes import Envelope,NOTHING
 import math
 import inspect
 import functools
+
+from zilabrad.pyle.envelopes import Envelope,NOTHING
+from zilabrad.util import singleton
+
 
 def convertUnits(**unitdict):
     """
@@ -73,12 +76,14 @@ def convertUnits(**unitdict):
         return wrapped
     return wrap
 
-class waveform(object):
+
+@singleton
+class waveServer(object):
     """ 
     Represents a control waveform as a function of time 
 
     """
-    def __init__(self,all_length=1e-6,fs=1.8e9,origin=0,name='default'):
+    def __init__(self,device_id='0',all_length=1e-6,fs=1.8e9,origin=0,name='default'):
         self.name = name
         self.fs = fs
         self.sample_number = ceil(all_length*self.fs/16)*16 ## QA lenght最小16,最小单位间隔8; HD length最小32,最小单位间隔16;

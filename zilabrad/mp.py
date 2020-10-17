@@ -22,8 +22,9 @@ import scipy.optimize
 
 from importlib import reload
 
-from zilabrad.instrument.zurichHelper import _check_device,_stop_device
-from zilabrad.instrument.qubitServer import loadQubits,dataset_create,RunAllExperiment
+from zilabrad.instrument.qubitServer import check_device,stop_device
+from zilabrad.instrument.qubitServer import dataset_create,RunAllExperiment as RunAllExp
+from zilabrad.instrument.QubitDict import loadQubits
 from zilabrad.instrument.qubitServer import runQubits as runQ
 
 # from conf import loadInfo
@@ -71,34 +72,7 @@ def _standard_exps(ss,funcs = _bringup_experiment):
         eval(expr)
     return
 
-plt.ion()
-
-
-
-exp_devices = {}
-
-logging.basicConfig(format='%(asctime)s | %(name)s [%(levelname)s] : %(message)s',
-                    level=logging.INFO
-                    )
-"""
-logging setting
-"""
-
-def RunAllExp(*args):
-    qa,hd,mw,mw_r = exp_devices[:4]
-    result = RunAllExperiment(exp_devices,*args)
-    return result
-    
-
-def stop_device():
-    qa,hd,mw,mw_r = exp_devices[:4]
-    _stop_device(qa,hd)
-    return
-
-def check_device():
-    qa,hd,mw,mw_r = exp_devices[:4]
-    # _check_device(mw,mw_r)
-    return
+  
 
 def gridSweep(axes):
     """
@@ -262,8 +236,8 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phase=0,
 
     if bias == None:
         bias = q['bias']
-    # if power == None:
-    #     power = q['readout_amp']
+    if power == None:
+        power = q['readout_amp']
     if sb_freq == None:
         q.demod_freq = q['readout_freq']['Hz']-q['readout_mw_fc']['Hz']
     else:
@@ -281,7 +255,7 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phase=0,
 
     # create dataset
     dataset = sweeps.prepDataset(sample, name+des, axes, deps,kw=kw)
-    dataset_create(dataset)
+    # dataset_create(dataset)
     
 
     # daq=exp_devices[0].daq
@@ -294,7 +268,7 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phase=0,
         freq,bias,power,sb_freq,mw_power,delay,phase = para_list
         q.power_r = power2amp(power)
         q['readout_mw_fc'] = (freq - q.demod_freq)*Hz
-        # q.demod_freq = freq - q['readout_mw_fc'][Hz]
+        q.demod_freq = freq - q['readout_mw_fc'][Hz]
         # exp_devices[0].set_qubit_frequency([q.demod_freq])
 
         start = 0   
@@ -324,7 +298,7 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phase=0,
         return result 
 
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
-    result_list = RunAllExp(runSweeper,axes_scans)
+    result_list = RunAllExp(runSweeper,axes_scans,dataset)
     if back:
         return result_list
 
@@ -395,7 +369,7 @@ def spectroscopy(sample,measure=0,stats=1024,freq=6.0*GHz,specLen=1*us,specAmp=0
 
  
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
-    result_list = RunAllExp(runSweeper,axes_scans)
+    result_list = RunAllExp(runSweeper,axes_scans,dataset)
     return
 
 
@@ -467,7 +441,7 @@ def rabihigh(sample,measure=0,stats=1024,piamp=0.05,df=0*MHz,
         return result
         
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
-    result_list = RunAllExp(runSweeper,axes_scans)
+    result_list = RunAllExp(runSweeper,axes_scans,dataset)
     return
 
 
@@ -527,11 +501,10 @@ def IQraw(sample,measure=0,stats=1024,update=False,analyze=False,reps=1,
         return result
 
     collect,raw = True,True
-    print(dataset)
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
     
 
-    result_list = RunAllExp(runSweeper,axes_scans,collect,raw)
+    result_list = RunAllExp(runSweeper,axes_scans,dataset,collect,raw)
     data = np.asarray(result_list[0]).T
     print(data)
     if update:
@@ -622,7 +595,7 @@ def T1_visibility(sample,measure=0,stats=1024,delay=0.8*us,
         return result
 
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
-    result_list = RunAllExp(runSweeper,axes_scans)
+    result_list = RunAllExp(runSweeper,axes_scans,dataset)
     if back:
         return result_list,q
 
@@ -695,7 +668,7 @@ def ramsey(sample,measure=0,stats=1024,delay=ar[0:10:0.4,us],
         return result
 
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
-    result_list = RunAllExp(runSweeper,axes_scans)
+    result_list = RunAllExp(runSweeper,axes_scans,dataset)
     if back:
         return result_list,q
 
@@ -792,7 +765,7 @@ def s21_dispersiveShift(sample,measure=0,stats=1024,freq=ar[6.4:6.5:0.02,GHz],de
         return result 
 
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
-    result_list = RunAllExp(runSweeper,axes_scans)
+    result_list = RunAllExp(runSweeper,axes_scans,dataset)
     if back:
         return result_list,q
 
@@ -881,7 +854,7 @@ def qqiswap(sample,measure=0,delay=20*ns,zpa=None,name='iswap',des=''):
         return result
         
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
-    result_list = RunAllExp(runSweeper,axes_scans)
+    result_list = RunAllExp(runSweeper,axes_scans,dataset)
     return
 
 

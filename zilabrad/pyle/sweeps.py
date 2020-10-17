@@ -124,34 +124,34 @@ def run(func, sweep, save=True, dataset=None,
     abortPrefix: passed along to checkAbort for abortable sweeps
     """
     # with QubitSequencer() as sequencer:
-    sequencer = None 
-
-    # wrap the sweep iterator to handle keypresses
-    if abortable:
-        sweep = checkAbort(sweep, prefix=abortPrefix)
-    
-    # wrap the function to pass the qubit sequencer as the first param
-    def wrapped(val):
-        ans = yield func(sequencer, val)
-        ans = np.asarray(ans)
-        if noisy:
-            if len(ans.shape) == 1:
-                rows = [ans]
-            else:
-                rows = ans
-            for row in rows:
-                print(' '.join(('%0.3g' % v).ljust(8) for v in row))
-        returnValue(ans)
-    
-    iter = pmap(wrapped, sweep, size=pipesize)
-    if save and dataset:
-        iter = dataset.capture(iter)
-    
-    # run the iterable, and either collect or discard
-    if collect:
-        return iter
-    else:
-        for _ in iter: pass
+    while True:
+        sequencer = None
+        # wrap the sweep iterator to handle keypresses
+        if abortable:
+            sweep = checkAbort(sweep, prefix=abortPrefix)
+        
+        # wrap the function to pass the qubit sequencer as the first param
+        def wrapped(val):
+            ans = yield func(sequencer, val)
+            ans = np.asarray(ans)
+            if noisy:
+                if len(ans.shape) == 1:
+                    rows = [ans]
+                else:
+                    rows = ans
+                for row in rows:
+                    print(' '.join(('%0.3g' % v).ljust(8) for v in row))
+            return (ans)
+        
+        iter = pmap(wrapped, sweep, size=pipesize)
+        if save and dataset:
+            iter = dataset.capture(iter)
+        
+        # run the iterable, and either collect or discard
+        if collect:
+            return iter
+        else:
+            for _ in iter: pass
 
 
 def gridSweep(axes):
@@ -178,6 +178,18 @@ def grid(func, axes, **kw):
     
     All other keyword arguments to this function are passed directly to run.
     """
+    def gridSweep(axes):
+        if not len(axes):
+            yield (), ()
+        else:
+            (param, _label), rest = axes[0], axes[1:]
+            if np.iterable(param): # TODO: different way to detect if something should be swept
+                for val in param:
+                    for all, swept in gridSweep(rest):
+                        yield (val,) + all, (val,) + swept
+            else:
+                for all, swept in gridSweep(rest):
+                    yield (param,) + all, swept
     
     # pass in all params to the function, but only prepend swept params to data
     def wrapped(server, args):

@@ -5,18 +5,16 @@ Helpers for Zurich Instruments
 including classes for AWG devices, microwave sources
 """
 
+
 import logging
 import zhinst.utils ## create API object
 import textwrap ## to write sequencer's code
 import time ## show total time in experiments
 import matplotlib.pyplot as plt ## give picture
-## if pyplot failed pip install -v matplotlib==2.2.2, s
-## see
-## https://stackoverflow.com/questions/52458461/import-matplotlib-pyplot-as-plt-failed
-
 import numpy as np 
 from math import ceil,pi
 
+from zilabrad.util import singleton,singletonMany
 from zilabrad.pyle.registry import RegistryWrapper
 import labrad
 from labrad.units import Unit,Value
@@ -24,7 +22,7 @@ _unitSpace = ('V', 'mV', 'us', 'ns','s', 'GHz', 'MHz','kHz','Hz', 'dBm', 'rad','
 V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l  = [Unit(s) for s in _unitSpace]
 import pyvisa
 
-from zilabrad.instrument.waveforms import convertUnits,waveform
+from zilabrad.instrument.waveforms import convertUnits,waveServer
 
 logging.basicConfig(format='%(asctime)s | %(name)s [%(levelname)s] : %(message)s',
                     level=logging.INFO
@@ -40,134 +38,24 @@ logging.basicConfig(format='%(asctime)s | %(name)s [%(levelname)s] : %(message)s
 
 
 
-def _call_object_func(server: object,_name_eval: dict,command: None or str = None)->bool:
-    """  call an object accroding to a dict
-
-    Example:
-        _name_eval = {
-        'zurich_qa':'init_setup'}
-        
-        _call_object_func(qa,_name_eval) # qa is instance of zurich_qa
-        equals to: qa.init_setup()
-
-    Returns:
-        False if server name not in _name_eval.keys()
-        else: True
-    """
-    name = server.__class__.__name__
-
-    if command == None:
-        command = r'server.' + _name_eval[name] + '()'
-    
-    if name not in _name_eval.keys():
-        logging.info("some of args of server:object (qa,hd...) invalid")
-        return False
-    else:
-        try:
-            eval(command)
-            logging.info(name+" successfully call %s",_name_eval[name])
-        except:
-            logging.warning(name+"cannot call %s",_name_eval[name])
-        return True
 
 
+@singleton
+class ziDAQ(object):
+    def __init__(self,connectivity,labone_ip='localhost'):
+        self.daq = zhinst.ziPython.ziDAQServer(labone_ip,connectivity,6)
 
-def _init_device(*servers:object):
-    """  initialize all server setup; 
-    Example: _init_device(qa,hd,mw,mw_r)
-    """
-    _name_eval = {
-    'zurich_qa':'init_setup',
-    'zurich_hd':'init_setup',
-    'microwave_source':'init_setup',
-    }
-
-    for server in servers:
-        _call_object_func(server,_name_eval)
-    return
-
-
-def _check_device(*servers:object):
-    """
-    Make sure all device in work before runQ, or bringup again
-    Args:
-        *servers: one or more server, server is an instance
-    Example: 
-        _check_device(mw,mw_r)
-        mw,mw_r are instances of microwave_source
-    """
-    _name_eval = {
-    'microwave_source':'refresh',
-    }
-    for server in servers:
-        _call_object_func(server,_name_eval)
-    return
-
-
-def _stop_device(*servers:object):
-    """  close all device; 
-    Args:
-        *servers: one or more server, server is an instance
-    Example: 
-        _stop_device(qa,hd)
-        qa,hd: instances of zurich_qa and zurich_hd
-    """
-    _name_eval = {
-    'zurich_qa':'stop_subscribe',
-    'zurich_hd':'awg_close_all',
-    }
-
-    for server in servers:
-        _call_object_func(server,_name_eval)
-    return
-
-
-def _mpAwg_init(qubits: list, servers: list):
-    """
-    prepare and Returns waveforms
-    Args:
-        qubits (list) -> [q (dict)]: contains value as parameter
-        qa (object): zurich_qa instance
-        hd (object): zurich_hd instance
-    
-    Returns:
-        w_qa (object): waveform instance for qa
-        w_hd (object): waveform instance for hd
-
-    TODO: better way to generate w_qa, w_hd
-    try to create features in the exsiting class but not create a new function
-    """
-    qa,hd = servers[:2]
-    q = qubits[0] ## the first qubit as master
-
-    hd.pulse_length_s = 0 ## add hdawgs length with unit[s]
-
-    qa.result_samples = qubits[0]['stats']  ## int: sample number for one sweep point
-    qa.set_adc_trig_delay(q['bias_start']+hd.pulse_length_s*s, q['readout_delay'])
-    qa.set_pulse_length(q['readout_len'])
-
-    f_read = []
-    for qb in qubits:
-        if qb['do_readout']: ##in _q.keys():
-            f_read += [qb.demod_freq]
-    if len(f_read) == 0:
-        raise Exception('Must set one readout frequency at least')
-    qa.set_qubit_frequency(f_read) ##
-
-    ## initialize waveforms and building 
-    qa.update_wave_length()
-    hd.update_wave_length()
-    ### ----- finish ----- ###
-    return 
-
-
+@singletonMany
 class zurich_qa(object):
-    def __init__(self,device_id,labone_ip='localhost'):   
+    def __init__(self,obj_name='QA_1',device_id='dev2592',labone_ip='localhost'): 
+        self.obj_name = obj_name
         self.id = device_id
         self.noisy = False ## 开启的话, 会打开所有正常工作时的print语句
         try:
             print('Bring up %s in %s'%(self.id,labone_ip))
-            self.daq = zhinst.ziPython.ziDAQServer(labone_ip,8004,6)
+            
+            self.daq = ziDAQ(8004).daq # connectivity = 8004
+            
             self.daq.connectDevice(self.id,'1gbe')
             print(self.daq)
             self.FS = 1.8e9/(self.daq.getInt('/{:s}/awgs/0/time'.format(self.id))+1) ## 采样率
@@ -505,13 +393,17 @@ class zurich_qa(object):
 
 
 
-class zurich_hd(object):
-    def __init__(self,device_id,labone_ip='localhost'):   
+
+
+@singletonMany
+class zurich_hd:
+    def __init__(self,obj_name = 'HD_1',device_id='dev8334',labone_ip='localhost'):   
         self.id = device_id
+        self.obj_name = obj_name
         self.noisy = False ## 开启的话, 会打开所有正常工作时的print语句
         try:
             print('Bring up %s in %s'%(self.id,labone_ip))
-            self.daq = zhinst.ziPython.ziDAQServer(labone_ip,8004,6)
+            self.daq = ziDAQ(8004).daq # connectivity = 8004
             self.daq.connectDevice(self.id,'1gbe')
             print(self.daq)
             self.pulse_length_s = 0 ## waveform length; unit --> Sample Number
@@ -692,104 +584,6 @@ class zurich_hd(object):
         
 
 
-
-class microwave_source(object):
-    def __init__(self,device_ip,object_name):
-        self.ip = device_ip
-        self.freq = 0
-        self.power = 0
-        self.rm = pyvisa.ResourceManager()
-        self.bringup()
-        self.object_name = object_name # mw, mw_r
-
-    def init_setup(self):
-        while self.get_output() == 0:
-            self.set_output(1)
-
-
-    @convertUnits(freq='Hz')
-    def set_freq(self,freq):
-        if self.freq != freq:
-            self.dev.write(':sour:freq %f Hz'%freq)
-            self.freq = freq
-
-    @convertUnits(power='dBm')
-    def set_power(self,power):
-        if self.power != power:
-            self.dev.write(':sour:pow %f'%power) 
-            self.power = power
-
-    def get_power(self):
-        self.power = float(self.dev.query(':sour:pow?'))
-        return self.power
-
-    def get_freq(self):
-        self.freq = float(self.dev.query(':sour:freq?'))
-        return self.freq
-
-    def get_output(self):
-        state = self.dev.query(':outp:stat?')
-        return int(state)
-
-    def set_output(self,state):
-        self.dev.write(':outp:stat %d'%state)
-
-    def bringup(self):
-        self.dev = self.rm.open_resource('TCPIP0::%s::inst0::INSTR' %self.ip)
-        self.init_setup()
-        logging.info('Bring up microwave_source:%s'%self.ip)
-
-    def refresh(self):
-        try:
-            while self.get_output() == 0:
-                self.set_output(1)
-        except:
-            self.bringup()
-            logging.info(self.ip,'microwave_source bring up again.')
-
-
-class yokogawa_dc_source(object):
-    """docstring for yokogawa_dc_source"""
-    def __init__(self,device_ip):
-        self.ip = device_ip
-        self.amp = 0.0 ## unit:V
-        self.state = False
-        rm = pyvisa.ResourceManager()
-        self.dev = rm.open_resource('TCPIP0::%s::inst0::INSTR' %self.ip)
-        self.init_setup()
-
-    def init_setup(self):
-        self.output(0)
-        self.amp(self.amp)
-    
-    def sourFunc(self,mode=None):
-        if mode is None:
-            ans = self.dev.query('sour:func?')
-        elif mode=='curr':
-            dev.write('sens:func \'curr\'')
-            dev.write('sour:func %s' % mode)
-        elif mode=='volt':
-            dev.write('sens:func \'volt\'')
-            dev.write('sour:func %s' % mode)
-
-
-    def amp(self,amp=None):
-        ## unit:V
-        if amp is None:
-            self.amp = float(self.dev.query(':sour:lev?'))
-            return self.amp
-        else:
-            self.amp = float(amp)
-            self.dev.write(':sour:lev:auto %f'%self.amp) 
-
-
-    def output(self,state=None):
-        if state is None:
-            self.state = int(self.dev.query(':outp:stat?'))
-            return self.state
-        else:
-            self.state = state
-            self.dev.write(':outp:stat %d'%self.state)
 
 
 

@@ -1,23 +1,23 @@
 
 from abc import ABC
+from functools import wraps
 
-
-
-def singleton(class_):
+    
+def singletonMany(class_):
     """
     We do not want to initialize the same device after we created it.
-    device_id: required to identify whether the device object has been created
+    obj_name: required to identify whether the device object has been created
     
     Example: 
         
         @singleton
         class MyDevice(object)
-            def __init__(self,device_id,*args, **kwargs):
+            def __init__(self,obj_name,*args, **kwargs):
         
         Therefore, we can use like: 
         
-        device_ids = ['1','2']
-        for i,devId in enumerate(device_ids):
+        obj_names = ['1','2']
+        for i,devId in enumerate(obj_names):
             if i == 0:
                 devs = MyDevice(devId)
             else:
@@ -31,11 +31,27 @@ def singleton(class_):
         The object will not be initialized again, but just give it to you, since it always 
         stored in your cache even you forget it.
     """
+
     class SingletonFactory(ABC):
         instance = {}
-        def __new__(cls,device_id,*args, **kwargs):
-            if device_id not in cls.instance:
-                cls.instance[device_id] = class_(device_id,*args, **kwargs)
+        def __new__(cls,obj_name,*args, **kwargs):
+            if obj_name not in cls.instance:
+                cls.instance[obj_name] = class_(obj_name,*args, **kwargs)
             return cls.instance
     SingletonFactory.register(class_)
     return SingletonFactory
+    
+def singleton(class_):
+
+    class SingletonFactory(ABC):
+        instance = None
+        def __new__(cls,*args, **kwargs):
+            if not cls.instance:
+                cls.instance = class_(*args, **kwargs)
+            return cls.instance
+    SingletonFactory.register(class_)
+    return SingletonFactory
+    
+    
+    
+    
