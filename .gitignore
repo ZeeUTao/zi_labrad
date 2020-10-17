@@ -9,6 +9,7 @@ __jupterTest__/
 *.so
 
 # Distribution / packaging
+.ipynb
 .Python
 build/
 develop-eggs/
