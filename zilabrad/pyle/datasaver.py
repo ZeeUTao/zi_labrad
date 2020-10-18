@@ -101,7 +101,8 @@ class Dataset(object):
         self.requests.append(p.send_future())
         self.created = True
     
-    # see concurrent.futures.Future
+    # see labrad.client
+    # and concurrent.futures.Future
     def add(self, data):
         """Add data to this dataset.
         
@@ -113,15 +114,16 @@ class Dataset(object):
             self._create() # make sure the dataset has been created
         if len(self.requests) >= self.delay:
             result = self.requests.pop(0)
+            if result: 
+                result = result.result()
             if self.first_request:
                 # the first request is to create the dataset, so the
                 # response contains our path and the name assigned by the
                 # data vault.  This name has a number prefix to make it
                 # unique.  We pull out this number so it can be used
                 # later if we need to retrieve the dataset.
-                pass
-                # self.path, self.fullName = result['new']
-                # self.num = int(self.fullName.split(' - ')[0])
+                self.path, self.fullName = result['new']
+                self.num = int(self.fullName.split(' - ')[0])
                 self.first_request = False
         self.requests.append(self.server.add(data, context=self.context))
         return data

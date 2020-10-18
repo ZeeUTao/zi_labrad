@@ -1,17 +1,21 @@
 # -*- coding: utf-8 -*-
 """
 qubitServer to control all instruments
+
+Created on 2020.09.09 20:57
+@author: Tao Ziyu
 """
 
+import time
 from functools import wraps
 import logging
 import numpy as np 
-
+from twisted.internet.defer import returnValue
 
 from zilabrad.instrument import waveforms
 from zilabrad.instrument.zurichHelper import zurich_qa, zurich_hd
 from zilabrad.instrument.QubitDict import loadQubits,update_session,loadInfo
-
+from zilabrad.pyle.pipeline import pmap
 
 import labrad
 from labrad.units import Unit,Value
@@ -29,14 +33,16 @@ _type2Regkey = {
 'hd':'ziHD_id',
 'mw':'microwave_source'
 }
-"""dict for device type to the name of key in Registry
+"""
+dict for device type to the name of key in Registry
 """
 
 _server_class = {
 'qa':zurich_qa,
 'hd':zurich_hd,
 }
-"""dict for device type to the server class
+"""
+dict for device type to the server class
 """
 
 
@@ -116,6 +122,24 @@ def stop_device():
         # server.output(False)  
     return
     
+    
+def dataset_create(dataset):
+    """Create the dataset. 
+    see 
+    dataset = sweeps.prepDataset(*args)
+    dv = labrad.connect().dataVault
+    dataVault script is in "/server/py3_data_vault"
+    """
+    cxn = labrad.connect()
+    dv = cxn.data_vault
+    
+    dv.cd(dataset.path, dataset.mkdir)
+    logging.info(dataset.dependents)
+    logging.info(dataset.independents)
+    dv.new(dataset.name, dataset.independents, dataset.dependents)
+    if len(dataset.params):
+        dv.add_parameters(tuple(dataset.params))
+
 
 def Unit2SI(a):
     if type(a) is not Value:
@@ -176,12 +200,14 @@ def _mpAwg_init(qubits:list):
     ## initialize waveforms and building 
     qa.update_wave_length()
     hd.update_wave_length()
+    ### ----- finish ----- ###
     return 
     
     
 def RunAllExperiment(function,iterable,dataset,
                      collect: bool = True,
-                     raw: bool = False):
+                     raw: bool = False,
+                     pipesize: int = 10):
     """ Define an abstract loop to iterate a funtion for iterable
 
     Example:
@@ -195,53 +221,37 @@ def RunAllExperiment(function,iterable,dataset,
         collect: if True, collect the result into an array and return it; else, return an empty list
         raw: discard swept_paras if raw == True
     """
-    def run(function, paras):
+    def run(paras):
         # pass in all_paras to the function
         all_paras = [Unit2SI(a) for a in paras[0]]
         swept_paras = [Unit2num(a) for a in paras[1]]
-        result = function(None,all_paras) # None is just the old devices arg which is not used now 
+        result = function(None,all_paras) # 'None' is just the old devices arg which is not used now 
         if raw:
             result_raws = np.asarray(result)
-            # for result_raw in result_raws.T:
-                # pass
-                # dv.add(result_raw)
             return result_raws.T
         else:
             result = np.hstack([swept_paras,result])
             return result
 
-      
-        
-
-    def run_iters():
+    def wrapped():
         for paras in iterable:
-            result = run(function,paras)
-            
+            result = run(paras)
             if _noisy_printData == True:
                 print(
                     str(np.round(result,3))
                     )
             yield result
             
-    results = dataset.capture(run_iters())
+    
+    # iter = pmap(wrapped, iterable, size=pipesize)
+    results = dataset.capture(wrapped())
         
     result_list = []
     for result in results:
         result_list.append(result)
-    # result_list = []
-    # with dv as dataset.server:
-        # for paras in iterable:
-            # result = run(function,paras,dv)
-            # result_list.append(result)
-    
-    # print('haha2')
-
     
     if collect:
         return result_list
-        # result_list.append(result)
-        # result_list = np.asarray(result_list)
-    # return result_list
 
 
 
@@ -389,33 +399,35 @@ def runDevices(qubits,wave_AWG,wave_readout):
         
         
 def runQubits(qubits,exp_devices = None):
-    """ general steps for running multiqubits
+    """ generally for running multiqubits
 
     Args:
         qubits (list): a list of dictionary
         _runQ_servers (list/tuple): instances used to control device
     
+    Time Cost:
+        0.3 s : prepare waveform in local PC
+        0.2 s : setupDevices
+        0.8 s : runDevices and get data
     TODO:
         (1) check _is_runfirst=True? Need run '_mpAwg_init' at first running;
         (2) clear q.xy/z/dc and their array after send();
     """
+
     
     # prepare wave packets
     wave_AWG = makeSequence_AWG(qubits)
     wave_readout = makeSequence_readout(qubits)
-    
+
     q_ref = qubits[0]
-    
-    
     
     ## Now it is only two microwave sources, in the future, it should be modified
     # set_microwaveSource(deviceList = [mw,mw_r],
                         # freqList = [q_ref['xy_mw_fc'],q_ref['readout_mw_fc']],
                         # powerList = [q_ref['xy_mw_power'],q_ref['readout_mw_power']])
     
-    
     setupDevices(qubits)    
-    
+
     ## run AWG and reaout devices and get data
     data = runDevices(qubits,wave_AWG,wave_readout)
     return data
