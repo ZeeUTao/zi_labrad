@@ -19,31 +19,27 @@ from numpy import pi
 import itertools
 import scipy.optimize
 
-
 from importlib import reload
 
 from zilabrad.instrument.qubitServer import check_device,stop_device
 from zilabrad.instrument.qubitServer import dataset_create,RunAllExperiment as RunAllExp
-from zilabrad.instrument.QubitDict import loadQubits
 from zilabrad.instrument.qubitServer import runQubits as runQ
+from zilabrad.instrument.QubitDict import loadQubits
+import zilabrad.instrument.waveforms as waveforms
 
-# from conf import loadInfo
-# from conf import qa,hd,mw,mw_r
-# qa,hd,mw,mw_r are objects (instance)
 
 import zilabrad.plots.adjuster
-import zilabrad.instrument.waveforms as waveforms
+
 from zilabrad.plots.dataProcess import datahelp
 from zilabrad.plots import dataProcess 
-"""
-import for pylabrad
-"""
 from zilabrad.pyle import sweeps
+from zilabrad.pyle.util import sweeptools
+from zilabrad.pyle.sweeps import checkAbort
+
 
 import time
 import numpy as np
-from zilabrad.pyle.util import sweeptools
-from zilabrad.pyle.sweeps import checkAbort
+
 from labrad.units import Unit,Value
 _unitSpace = ('V','mV','us','ns','s','GHz','MHz','kHz','Hz','dBm','rad','None')
 V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l  = [Unit(s) for s in _unitSpace]

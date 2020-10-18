@@ -1,9 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 qubitServer to control all instruments
-
-Created on 2020.09.09 20:57
-@author: Tao Ziyu
 """
 
 from functools import wraps
@@ -32,16 +29,14 @@ _type2Regkey = {
 'hd':'ziHD_id',
 'mw':'microwave_source'
 }
-"""
-dict for device type to the name of key in Registry
+"""dict for device type to the name of key in Registry
 """
 
 _server_class = {
 'qa':zurich_qa,
 'hd':zurich_hd,
 }
-"""
-dict for device type to the server class
+"""dict for device type to the server class
 """
 
 
@@ -121,24 +116,6 @@ def stop_device():
         # server.output(False)  
     return
     
-    
-def dataset_create(dataset):
-    """Create the dataset. 
-    see 
-    dataset = sweeps.prepDataset(*args)
-    dv = labrad.connect().dataVault
-    dataVault script is in "/server/py3_data_vault"
-    """
-    cxn = labrad.connect()
-    dv = cxn.data_vault
-    
-    dv.cd(dataset.path, dataset.mkdir)
-    logging.info(dataset.dependents)
-    logging.info(dataset.independents)
-    dv.new(dataset.name, dataset.independents, dataset.dependents)
-    if len(dataset.params):
-        dv.add_parameters(tuple(dataset.params))
-
 
 def Unit2SI(a):
     if type(a) is not Value:
@@ -199,7 +176,6 @@ def _mpAwg_init(qubits:list):
     ## initialize waveforms and building 
     qa.update_wave_length()
     hd.update_wave_length()
-    ### ----- finish ----- ###
     return 
     
     
@@ -413,7 +389,7 @@ def runDevices(qubits,wave_AWG,wave_readout):
         
         
 def runQubits(qubits,exp_devices = None):
-    """ generally for running multiqubits
+    """ general steps for running multiqubits
 
     Args:
         qubits (list): a list of dictionary
@@ -423,7 +399,6 @@ def runQubits(qubits,exp_devices = None):
         (1) check _is_runfirst=True? Need run '_mpAwg_init' at first running;
         (2) clear q.xy/z/dc and their array after send();
     """
-
     
     # prepare wave packets
     wave_AWG = makeSequence_AWG(qubits)
