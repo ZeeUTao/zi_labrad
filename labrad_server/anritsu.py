@@ -93,7 +93,7 @@ class RSServer(GPIBManagedServer):
     deviceName = 'ANRITSU MG3692C'
     deviceWrapper = RSWrapper
 
-    @setting(10, 'Frequency', f=['v[MHz]'], returns=['v[MHz]'])
+    @setting(10, 'Frequency', f=['v'], returns=['v'])
     def frequency(self, c, f=None):
         """Get or set the CW frequency."""
         dev = self.selectedDevice(c)
@@ -101,7 +101,7 @@ class RSServer(GPIBManagedServer):
             yield dev.setFrequency(f)
         returnValue(dev.frequency)
 
-    @setting(11, 'Amplitude', a=['v[dBm]'], returns=['v[dBm]'])
+    @setting(11, 'Amplitude', a=['v'], returns=['v'])
     def amplitude(self, c, a=None):
         """Get or set the CW amplitude."""
         dev = self.selectedDevice(c)

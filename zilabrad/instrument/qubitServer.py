@@ -10,7 +10,6 @@ import time
 from functools import wraps
 import logging
 import numpy as np 
-from twisted.internet.defer import returnValue
 
 from zilabrad.instrument import waveforms
 from zilabrad.instrument.zurichHelper import zurich_qa, zurich_hd
@@ -59,6 +58,13 @@ def get_deviceMap(_type: str):
     deviceMap = dict(dev[_type2Regkey[_type]])
     return deviceMap
     
+def get_microwaveServer():
+    """
+    usually return anritsu_server
+    """
+    dev = loadInfo(paths=['Servers','devices'])
+    return str(dev['microwave_server'])
+    
     
 def sortDevice(_type: str):
     """
@@ -91,11 +97,12 @@ def check_device():
     """
     Make sure all device in work before runQ
     """
-    cxn = labrad.connect()
+    # cxn = labrad.connect()
     
+    # server = cxn[get_microwaveServer()]
     # deviceMap = get_deviceMap('mw')    
-    # for key in deviceMap:
-        # server = cxn[key]
+    # for i,key in enumerate(deviceMap):
+        # server.select_device(deviceMap[key])
         # server.output(True)
     return
 
@@ -114,12 +121,13 @@ def stop_device():
         server = deviceDict_hd[key]
         server.awg_close_all()
         
-    # cxn = labrad.connect()
+    cxn = labrad.connect()
     
-    # deviceMap = deviceMap('mw')    
-    # for key in deviceMap:
-        # server = cxn[key]
-        # server.output(False)  
+    server = cxn[get_microwaveServer()]
+    deviceMap = get_deviceMap('mw')    
+    for i,key in enumerate(deviceMap):
+        server.select_device(deviceMap[key])
+        server.output(False)
     return
     
     
@@ -186,7 +194,8 @@ def _mpAwg_init(qubits:list):
     hd.pulse_length_s = 0 ## add hdawgs length with unit[s]
 
     qa.result_samples = qubits[0]['stats']  ## int: sample number for one sweep point
-    qa.set_adc_trig_delay(q['bias_start']+hd.pulse_length_s*s, q['readout_delay'])
+    qa.set_adc_trig_delay(q['bias_start']+hd.pulse_length_s*s)
+    qa.set_readout_delay(q['readout_delay'])
     qa.set_pulse_length(q['readout_len'])
 
     f_read = []
@@ -281,12 +290,20 @@ def getQubits_awgPort(qubits):
     return ports
     
 
-def set_microwaveSource(deviceList,freqList,powerList):
+def set_microwaveSource(freqList,powerList):
     """set frequency and power for microwaveSource devices
     """
-    for i in range(len(deviceList)):
-        deviceList[i].set_freq(freqList[i])
-        deviceList[i].set_power(powerList[i])
+    print(freqList[1]['MHz'],powerList[1]['dBm'])
+    deviceMap = get_deviceMap('mw')   
+    cxn = labrad.connect()
+    server = cxn[get_microwaveServer()]
+    deviceMap = get_deviceMap('mw')    
+    for i,key in enumerate(deviceMap):
+        server.select_device(deviceMap[key])
+        server.output(True)
+        
+        server.frequency(freqList[i]['MHz'])
+        server.amplitude(powerList[i]['dBm'])
     return
         
 
@@ -422,9 +439,8 @@ def runQubits(qubits,exp_devices = None):
     q_ref = qubits[0]
     
     ## Now it is only two microwave sources, in the future, it should be modified
-    # set_microwaveSource(deviceList = [mw,mw_r],
-                        # freqList = [q_ref['xy_mw_fc'],q_ref['readout_mw_fc']],
-                        # powerList = [q_ref['xy_mw_power'],q_ref['readout_mw_power']])
+    set_microwaveSource(freqList = [q_ref['xy_mw_fc'],q_ref['readout_mw_fc']],
+                        powerList = [q_ref['xy_mw_power'],q_ref['readout_mw_power']])
     
     setupDevices(qubits)    
 

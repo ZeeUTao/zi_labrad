@@ -36,7 +36,6 @@ V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l  = [Unit(s) for s in _unitSpace]
 def bringup_device():
     qubitServer.sortDevice('qa')
     qubitServer.sortDevice('hd')
-    qubitServer.sortDevice('mw')
     waveforms.waveServer()
     return       
 
