@@ -207,8 +207,8 @@ def _mpAwg_init(qubits:list):
     qa.set_qubit_frequency(f_read) ##
 
     ## initialize waveforms and building 
-    qa.update_wave_length()
-    hd.update_wave_length()
+    # qa.update_wave_length()
+    # hd.update_wave_length()
     ### ----- finish ----- ###
     return 
     
