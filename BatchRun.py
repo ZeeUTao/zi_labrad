@@ -20,7 +20,8 @@ from zilabrad.pyle.util import sweeptools as st
 
 from zilabrad.instrument import waveforms
 import zilabrad.instrument.qubitServer as qubitServer
-from zilabrad.instrument.QubitDict import loadInfo,loadQubits,update_session
+from zilabrad.instrument.QubitDict import qubitContext
+from zilabrad.instrument.QubitDict import update_session
 
 from zilabrad import mp
 
@@ -34,9 +35,8 @@ V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l  = [Unit(s) for s in _unitSpace]
 
 
 def bringup_device():
-    qubitServer.sortDevice('qa')
-    qubitServer.sortDevice('hd')
-    waveforms.waveServer()
+    qctx = qubitContext()
+    qctx.refresh()
     return       
 
 

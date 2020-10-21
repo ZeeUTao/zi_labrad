@@ -22,11 +22,15 @@
 
 ## Cost of time
 
-- make sequences: 0.3
+- make sequences: 0.3 (time = a+n x, a is fixed)
 - setup devices: 0.3; upload setting : 0.2
 - wait for data : 0.4
 
 Since more devices can operate simultaneously, *setup devices, upload setting and wait for data* will not be too long and only related to the ports of one devices (8 for Zurich HD).
+
+For making sequences, time is around $a+N t$, where $a$ is the cost time for compiling program almost fixed, 
+
+
 
 
 
@@ -45,25 +49,27 @@ Numba can largely speed up the calculation involved loop and numpy, when the dat
 
 
 
-
-
-In conclusion
+Attention: 
 
 - Not to use a pure python to generate a large list, but use numpy and numba to generate.
 
-Some expression can not be used, for example:
+  Some expression can not be used, for example:
 
 ```python
 (start<=t<end)
 ```
 
-which should be replaced by 
+​	which should be replaced by 
 
 ```python
 (start<=t)*(t<end)
 ```
 
-to be processed by numpy. 
+​	to be processed by numpy. 
+
+
+
+
 
 
 

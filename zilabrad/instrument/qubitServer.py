@@ -13,8 +13,10 @@ import numpy as np
 
 from zilabrad.instrument import waveforms
 from zilabrad.instrument.zurichHelper import zurich_qa, zurich_hd
-from zilabrad.instrument.QubitDict import loadQubits,update_session,loadInfo
+from zilabrad.instrument.QubitDict import loadQubits
+from zilabrad.instrument.QubitDict import qubitContext
 from zilabrad.pyle.pipeline import pmap
+
 
 import labrad
 from labrad.units import Unit,Value
@@ -27,83 +29,19 @@ np.set_printoptions(suppress=True)
 _noisy_printData = True
 
 
-_type2Regkey = {
-'qa':'ziQA_id',
-'hd':'ziHD_id',
-'mw':'microwave_source'
-}
-"""
-dict for device type to the name of key in Registry
-"""
-
-_server_class = {
-'qa':zurich_qa,
-'hd':zurich_hd,
-}
-"""
-dict for device type to the server class
-"""
-
-
-def get_deviceMap(_type: str):
-    """
-    get a device Mapping dictionary
-    choose a simpler name '1', '2', '3', not 'dev8334'
-    Example:
-        [('1', 'dev8334'),('2', 'dev8335')]
-    """
-    if _type not in _type2Regkey:
-        raise TypeError("No such device type %s"%(_type))
-    dev = loadInfo(paths=['Servers','devices'])
-    deviceMap = dict(dev[_type2Regkey[_type]])
-    return deviceMap
-    
-def get_microwaveServer():
-    """
-    usually return anritsu_server
-    """
-    dev = loadInfo(paths=['Servers','devices'])
-    return str(dev['microwave_server'])
-    
-    
-def sortDevice(_type: str):
-    """
-    Args: 
-        _type: device type, 'qa', 'hd'
-    Returns:
-        a dictionary, for example {'1',object}, object is an instance of device server (class)
-        Do not worry about the instance of the same device is recreated, which is set into a conditional singleton.
-    """
-    
-    
-    dev = loadInfo(paths=['Servers','devices'])
-    deviceMap = get_deviceMap(_type)
-    
-    deviceDict = {}
-    
-    for _id in deviceMap:
-        if _type in ['qa','hd']:
-            server = _server_class[_type]
-            # if use labone zurich instrument
-            deviceDict = server(_id,device_id=deviceMap[_id],labone_ip=dev['labone_ip'])
-        else:
-            raise TypeError("No such device type %s"%(_type))
-            
-    return deviceDict
-
 
 
 def check_device():
     """
     Make sure all device in work before runQ
     """
-    # cxn = labrad.connect()
-    
-    # server = cxn[get_microwaveServer()]
-    # deviceMap = get_deviceMap('mw')    
-    # for i,key in enumerate(deviceMap):
-        # server.select_device(deviceMap[key])
-        # server.output(True)
+    # qContext = qubitContext()
+    # server = qContext.servers_microwave
+    # IPdict = qContext.IPdict_microwave
+
+    # for key,value in IPdict.items():
+    #     server.select_device(value)
+    #     server.output(True)
     return
 
 
@@ -111,43 +49,24 @@ def check_device():
 def stop_device():
     """  close all device; 
     """
-    deviceDict_qa = sortDevice('qa')
-    for key in deviceDict_qa.keys():
-        server = deviceDict_qa[key]
+    qContext = qubitContext()
+    serverDict = qContext.servers_qa 
+    for key,server in serverDict.items():
         server.stop_subscribe()
     
-    deviceDict_hd = sortDevice('hd')
-    for key in deviceDict_hd.keys():
-        server = deviceDict_hd[key]
-        server.awg_close_all()
+    serverDict = qContext.servers_hd
+    for key,server in serverDict.items():
+        server.stop_subscribe()
         
-    # cxn = labrad.connect()
-    
-    # server = cxn[get_microwaveServer()]
-    # deviceMap = get_deviceMap('mw')    
-    # for i,key in enumerate(deviceMap):
-    #     server.select_device(deviceMap[key])
+    # qContext = qubitContext()
+    # server = qContext.servers_microwave
+    # IPdict = qContext.IPdict_microwave
+
+    # for key,value in IPdict.items():
+    #     server.select_device(value)
     #     server.output(False)
     return
     
-    
-def dataset_create(dataset):
-    """Create the dataset. 
-    see 
-    dataset = sweeps.prepDataset(*args)
-    dv = labrad.connect().dataVault
-    dataVault script is in "/server/py3_data_vault"
-    """
-    cxn = labrad.connect()
-    dv = cxn.data_vault
-    
-    dv.cd(dataset.path, dataset.mkdir)
-    logging.info(dataset.dependents)
-    logging.info(dataset.independents)
-    dv.new(dataset.name, dataset.independents, dataset.dependents)
-    if len(dataset.params):
-        dv.add_parameters(tuple(dataset.params))
-
 
 def Unit2SI(a):
     if type(a) is not Value:
@@ -183,11 +102,9 @@ def _mpAwg_init(qubits:list):
     TODO: better way to generate w_qa, w_hd
     try to create features in the exsiting class but not create a new function
     """
-    qa = sortDevice('qa')['qa 1']
-    
-    # hd = sortDevice('hd')
-    # hd = hd['hd 1']
-    
+    qContext = qubitContext()
+    qa = qContext.servers_qa['qa_1']
+
     q_ref = qubits[0] ## the first qubit as master
 
     qa.set_result_samples(qubits[0]['stats'])  ## int: sample number for one sweep point
@@ -204,7 +121,6 @@ def _mpAwg_init(qubits:list):
 
     ## initialize waveforms and building 
     # qa.update_wave_length()
-    # hd.update_wave_length()
     ### ----- finish ----- ###
     return 
     
@@ -247,8 +163,6 @@ def RunAllExperiment(function,iterable,dataset,
                     )
             yield result
             
-    
-    # iter = pmap(wrapped, iterable, size=pipesize)
     results = dataset.capture(wrapped())
         
     result_list = []
@@ -297,16 +211,16 @@ def set_microwaveSource(freqList,powerList):
     """set frequency and power for microwaveSource devices
     """
     print(freqList[1]['MHz'],powerList[1]['dBm'])
-    deviceMap = get_deviceMap('mw')   
-    cxn = labrad.connect()
-    server = cxn[get_microwaveServer()]
-    deviceMap = get_deviceMap('mw')    
-    for i,key in enumerate(deviceMap):
-        server.select_device(deviceMap[key])
-        server.output(True)
-        
-        server.frequency(freqList[i]['MHz'])
-        server.amplitude(powerList[i]['dBm'])
+
+    # qContext = qubitContext()
+    # server = qContext.servers_microwave
+    # IPdict = qContext.IPdict_microwave
+
+    # for key,value in IPdict.items():
+    #     server.select_device(value)
+    #     server.output(True)
+    #     server.frequency(freqList[i]['MHz'])
+    #     server.amplitude(powerList[i]['dBm'])
     return
         
 
@@ -317,8 +231,9 @@ def makeSequence_readout(qubits):
     This version only, consider one zurich_qa device
     FS: sampling rates
     """
-    qa = sortDevice('qa')
-    qa = qa['qa 1']
+    qContext = qubitContext()
+    qa = qContext.servers_qa['qa_1']
+
     FS = qa.FS
     waveServer = waveforms.waveServer(device_id='0')
     
@@ -345,8 +260,9 @@ def makeSequence_AWG(qubits):
     waveServer: zilabrad.instrument.waveforms
     FS: sampling rates
     """
-    hds = sortDevice('hd')
-    hd = hds['hd 1']
+    qContext = qubitContext()
+    hds = qContext.servers_hd
+    hd = hds['hd_1']
     
     FS = hd.FS
 
@@ -360,7 +276,7 @@ def makeSequence_AWG(qubits):
     ### ----bias_start previously -----  XY,Z, pulse quantum getes... ------ readout ----- bias_end ---
     q_ref = qubits[0]
     start = -Unit2SI(q_ref['bias_start'])
-    end = Unit2SI(q_ref['bias_end']) + Unit2SI(q_ref['experiment_length'])
+    end = Unit2SI(q_ref['bias_end']) + Unit2SI(q_ref['experiment_length']) + Unit2SI(q_ref['awgs_pulse_len']) + Unit2SI(q_ref['readout_len'])
     
     ## this is just set parameters, not really generate a list, which is slow
     waveServer.set_tlist(start,end,fs=FS)
@@ -381,9 +297,8 @@ def makeSequence_AWG(qubits):
     return wave_AWG
 
 def setupDevices(qubits):
-    qa = sortDevice('qa')['qa 1']
-    
-    # hds = sortDevice('hd')
+    qContext = qubitContext()
+    qa = qContext.servers_qa['qa_1']
 
     q_ref = qubits[0]
     
@@ -396,9 +311,11 @@ def setupDevices(qubits):
         logging.info('do_init')
 
 def runDevices(qubits,wave_AWG,wave_readout):
-    qa = sortDevice('qa')['qa 1']
-    
-    hds = sortDevice('hd')
+    qContext = qubitContext()
+    qas = qContext.servers_qa
+    qa = qas['qa_1']
+    hds = qContext.servers_hd
+
     # hd = hd['1']
     
     t0=time.time()
@@ -430,6 +347,8 @@ def runDevices(qubits,wave_AWG,wave_readout):
 
     ## start to run experiment
     for name,hd in hds.items():
+        if name not in wave_dict.keys():
+            continue
         for k in range(4):
             if len(wave_dict[name][k])!=0:
                 hd.awg_open(awgs_index=[k])

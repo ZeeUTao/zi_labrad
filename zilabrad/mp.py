@@ -19,27 +19,31 @@ from numpy import pi
 import itertools
 import scipy.optimize
 
+
 from importlib import reload
 
 from zilabrad.instrument.qubitServer import check_device,stop_device
-from zilabrad.instrument.qubitServer import dataset_create,RunAllExperiment as RunAllExp
-from zilabrad.instrument.qubitServer import runQubits as runQ
+from zilabrad.instrument.qubitServer import RunAllExperiment as RunAllExp
 from zilabrad.instrument.QubitDict import loadQubits
-import zilabrad.instrument.waveforms as waveforms
+from zilabrad.instrument.qubitServer import runQubits as runQ
 
+# from conf import loadInfo
+# from conf import qa,hd,mw,mw_r
+# qa,hd,mw,mw_r are objects (instance)
 
 import zilabrad.plots.adjuster
-
+import zilabrad.instrument.waveforms as waveforms
 from zilabrad.plots.dataProcess import datahelp
 from zilabrad.plots import dataProcess 
+"""
+import for pylabrad
+"""
 from zilabrad.pyle import sweeps
-from zilabrad.pyle.util import sweeptools
-from zilabrad.pyle.sweeps import checkAbort
-
 
 import time
 import numpy as np
-
+from zilabrad.pyle.util import sweeptools
+from zilabrad.pyle.sweeps import checkAbort
 from labrad.units import Unit,Value
 _unitSpace = ('V','mV','us','ns','s','GHz','MHz','kHz','Hz','dBm','rad','None')
 V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l  = [Unit(s) for s in _unitSpace]
@@ -229,6 +233,7 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phase=0,
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
     q = qubits[measure]
     q.channels = dict(q['channels'])
+    q.stats = stats
 
     if bias == None:
         bias = q['bias']
@@ -279,11 +284,14 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phase=0,
         q['experiment_length'] = start
         q['do_readout'] = True
 
-        q.dc = waveforms.square(amp=q['bias'],start=-q['bias_start'],end=q['bias_end']['s']+q['experiment_length'])
+        q.dc = waveforms.square(amp=q['bias'],start=-q['bias_start']['s'],end=q['bias_end']['s']+q['readout_len']['s']+q['experiment_length'])
         ## q.demod_phase = q.qa_adjusted_phase[Hz]*(qa.adc_trig_delay_s) ## adjusted phase
         q.r = waveforms.readout(amp=q.power_r,phase=q.demod_phase+phase,freq=q.demod_freq,start=0,length=q.readout_len)
 
+        ## run Qubits Experiment
+        t0 = time.time()
         data = runQ([q],devices)
+        print('runQ use %.3f'%(time.time()-t0))
 
         for _d_ in data:
             amp = np.mean(np.abs(_d_))/q.power_r ## unit: dB; only relative strength;
@@ -303,7 +311,7 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phase=0,
 @expfunc_decorator
 def spectroscopy(sample,measure=0,stats=1024,freq=6.0*GHz,specLen=1*us,specAmp=0.05,sb_freq=0*Hz,
     bias=None,zpa=None,
-    name='spectroscopy',des=''):
+    name='spectroscopy',des='',back=False):
     """ 
         sample: select experimental parameter from registry;
         stats: Number of Samples for one sweep point;
@@ -311,6 +319,7 @@ def spectroscopy(sample,measure=0,stats=1024,freq=6.0*GHz,specLen=1*us,specAmp=0
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
     q = qubits[measure]
     q.channels = dict(q['channels'])
+    q.stats = stats
 
     if bias == None:
         bias = q['bias']
@@ -349,6 +358,11 @@ def spectroscopy(sample,measure=0,stats=1024,freq=6.0*GHz,specLen=1*us,specAmp=0
 
         q['experiment_length'] = start
         q['do_readout'] = True
+
+        q.dc = waveforms.square(amp=q['bias'],start=-q['bias_start']['s'],end=q['bias_end']['s']+q['readout_len']['s']+q['experiment_length'])
+        ## q.demod_phase = q.qa_adjusted_phase[Hz]*(qa.adc_trig_delay_s) ## adjusted phase
+        q.r = waveforms.readout(amp=q.power_r,phase=q.demod_phase,freq=q.demod_freq,start=0,length=q.readout_len)
+
         ## start this runQ Experiment
         data = runQ([q],devices)
 
@@ -363,10 +377,10 @@ def spectroscopy(sample,measure=0,stats=1024,freq=6.0*GHz,specLen=1*us,specAmp=0
         result = [amp,phase,Iv,Qv,prob[0],prob[1]]
         return result
 
- 
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
     result_list = RunAllExp(runSweeper,axes_scans,dataset)
-    return
+    if back:
+        return result_list
 
 
 

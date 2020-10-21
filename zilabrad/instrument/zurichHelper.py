@@ -58,7 +58,7 @@ class zurich_qa(object):
         self.id = device_id
         self.noisy = False ## if open, will activate all print command during device working
         try:
-            print('Bring up %s in %s'%(self.id,labone_ip))
+            print('\nBring up %s in %s'%(self.id,labone_ip))
             self.daq = ziDAQ().daq
             self.daq.connectDevice(self.id,'1gbe')
             print(self.daq)
@@ -416,7 +416,7 @@ class zurich_hd:
         self.obj_name = obj_name
         self.noisy = False ## ## if open, will activate all print command during device working
         try:
-            print('Bring up %s in %s'%(self.id,labone_ip))
+            print('\nBring up %s in %s'%(self.id,labone_ip))
             self.daq = ziDAQ().daq
             self.daq.connectDevice(self.id,'1gbe')
             print(self.daq)
@@ -428,12 +428,13 @@ class zurich_hd:
 
     def init_setup(self):
         self.waveform_length = [0,0,0,0] ## four awg's waveform length, unit --> Sample Number
+        self.awg_grouping(grouping_index=0) ## index == 0 --> 4*2 grouping mode
         exp_setting = [
             ['/%s/sigouts/*/on'               % (self.id), 1], ## open all signal port
             ['/%s/sigouts/*/range'            % (self.id), 1], ## default output range: 1V
             ['/%s/awgs/0/outputs/*/amplitude' % (self.id), 1.0], ## hold 1 amplitude
             ['/%s/awgs/0/outputs/0/modulation/mode' % (self.id), 0], ## plain mode
-            ['/%s/system/awg/channelgrouping'% self.id, 0],  ## use 4*2 channels
+            # ['/%s/system/awg/channelgrouping'% self.id, 0],  ## use 4*2 channels
             ['/%s/awgs/*/time'                 % self.id, 0], ## use maximum sample rate
             # ['/%s/awgs/0/userregs/0'           % self.id, 0],
             # ['/%s/system/clocks/sampleclock/freq' % self.id, self.FS],
@@ -488,8 +489,19 @@ class zurich_hd:
         """
         grouping = ['4x2 with HDAWG8', '2x4 with HDAWG8', '1x8 with HDAWG8']
         self.daq.setInt('/{:s}/system/awg/channelgrouping'.format(self.id), grouping_index)
+        if grouping_index == 0:
+            for awg in range(4):
+                self.daq.setInt('/{:s}/awgs/{:d}/auxtriggers/0/channel'.format(self.id,awg), int(awg*2)) ## set digital trigger
+                self.daq.setDouble('/{:s}/triggers/in/{:d}/level'.format(self.id,int(awg*2)), 0.1) ## set trigger threshold
+        if grouping_index == 1:
+            for awg in range(2):
+                self.daq.setInt('/{:s}/awgs/{:d}/auxtriggers/0/channel'.format(self.id,awg), int(awg*4)) ## set digital trigger
+                self.daq.setDouble('/{:s}/triggers/in/{:d}/level'.format(self.id,int(awg*4)), 0.2) ## set trigger threshold
+        if grouping_index == 2:
+            self.daq.setInt('/{:s}/awgs/{:d}/auxtriggers/0/channel'.format(self.id,0),0) ## set digital trigger
+            self.daq.setDouble('/{:s}/triggers/in/{:d}/level'.format(self.id,0), 0.4) ## set trigger threshold
         self.daq.sync()
-        print('\n','HDAWG channel grouping:', grouping[grouping_index], '\n')
+        print(' --> [%s] channel grouping: %s'%(self.id.upper(),grouping[grouping_index]))
         
     def update_pulse_length(self,awg_index):
         hdinfo = self.daq.getList('/{:s}/awgs/{:d}/waveform/waves/0'.format(self.id,awg_index))

@@ -11,7 +11,7 @@ from math import ceil,pi
 import math
 import inspect
 import functools
-# from numba import jit
+from numba import jit
 
 from zilabrad.pyle.envelopes import Envelope,NOTHING
 from zilabrad.util import singleton
