@@ -11,6 +11,7 @@ from math import ceil,pi
 import math
 import inspect
 import functools
+# from numba import jit
 
 from zilabrad.pyle.envelopes import Envelope,NOTHING
 from zilabrad.util import singleton
@@ -87,10 +88,6 @@ class waveServer(object):
         self.name = name
         self.fs = fs
         self.sample_number = ceil(all_length*self.fs/16)*16 ## QA lenght最小16,最小单位间隔8; HD length最小32,最小单位间隔16;
-        # self.len = self.sample_number/self.fs ## set as 16 sample integral multiple;
-        # self.origin = origin ## mark real start in waveform; set QA trigger as 0  
-        # self.tlist = np.asarray([k/self.fs+self.origin for k in range(self.sample_number)])
-        # self.bias_sample = 0
 
     # We can use env from pyle.envelopes to define some complicated waveforms    
     # use: 
@@ -103,10 +100,10 @@ class waveServer(object):
         self.start = start
         self.end = end
         self.fs = fs
-        
+    
     def func2array_withoutNumpy(self,func,
-        start: float = 0.,
-        end: float = 0.,
+        start: float = None,
+        end: float = None,
         fs: None or float = None):
         """
         Try to use numpy, or it will be slow in python
@@ -128,8 +125,8 @@ class waveServer(object):
         return [func(start + idx*interval) for idx in range(steps)]
         
     def func2array_withNumpy(self,func,
-        start: float = 0.,
-        end: float = 0.,
+        start: float = None,
+        end: float = None,
         fs: None or float = None):
         """
         Args:
@@ -149,8 +146,8 @@ class waveServer(object):
         return func(np.arange(start,end,interval))
         
     def func2array(self,func,
-        start: float = 0.,
-        end: float = 0.,
+        start: float = None,
+        end: float = None,
         fs: None or float = None):
         """
         Args:
@@ -174,30 +171,32 @@ class waveServer(object):
 @convertUnits(start='s',end='s',amp=None,length='s')
 def square(start=50e-9,end=None,amp=1.0,length=100e-9):
     if end is None: end = start + length
-    timeFunc = lambda t: amp*(start<=t<end)
+    # @jit(nopython=True)
+    def timeFunc(t):
+        return amp*(t<end)*(t>=start)
     envelopes = Envelope(timeFunc,None,start,end)
     return envelopes
-
+    
 @convertUnits(start='s',end='s',freq='Hz',length='s')
 def sine(amp=0.1,phase=0.0,start=0,end=None,freq=10e6,length=100e-9):
     if end is None: end = start + length
-    timeFunc = lambda t: amp*np.sin(2*pi*freq*(t-start)+phase)*(start<=t<end)
+    timeFunc = lambda t: amp*np.sin(2*pi*freq*(t-start)+phase)*(t<end)*(t>=start)
     envelopes = Envelope(timeFunc,None,start,end)
     return envelopes
 
 @convertUnits(start='s',end='s',freq='Hz',length='s')
 def cosine(amp=0.1,phase=0.0,start=0,end=None,freq=10e6,length=100e-9):
     if end is None: end = start + length
-    timeFunc = lambda t: amp*np.cos(2*pi*freq*(t-start)+phase)*(start<=t<end)
+    timeFunc = lambda t: amp*np.cos(2*pi*freq*(t-start)+phase)*(t<end)*(t>=start)
     envelopes = Envelope(timeFunc,None,start,end)
     return envelopes
 
 @convertUnits(start='s',end='s',freq='Hz',length='s')
 def readout(amp=0.1,phase=0.0,start=0,end=None,freq=10e6,length=100e-9):
     if end is None: end = start + length
-    timeFunc1 = lambda t: amp*np.cos(2*pi*freq*(t-start)+phase)*(start<=t<end)
+    timeFunc1 = lambda t: amp*np.cos(2*pi*freq*(t-start)+phase)*(t<end)*(t>=start)
     env1 = Envelope(timeFunc1,None,start,end)
-    timeFunc2 = lambda t: amp*np.sin(2*pi*freq*(t-start)+phase)*(start<=t<end)
+    timeFunc2 = lambda t: amp*np.sin(2*pi*freq*(t-start)+phase)*(t<end)*(t>=start)
     env2 = Envelope(timeFunc2,None,start,end)
     return env1,env2
 
@@ -309,24 +308,4 @@ def readoutArrayMany(amps: list = [0.],freqs: list = [10e6],
         else:
             pulse_Q += sine(_amps[0],_freqs[0],start,end,fs) 
     return [pulse_I,pulse_Q]
-
-
-
-
-# @convertUnits(start='s',end='s',amp=None,length='s')
-# def square(start=50e-9,end=None,amp=1.0,length=100e-9):
-#     if end is None: end = start + length
-#     timeFunc = lambda t: amp*(start<=t<end)
-#     envelopes = Envelope(timeFunc,None,start,end)
-#     return envelopes
-
-
-# @convertUnits(start='s',end='s',freq='Hz',length='s')
-# def readout(amp=0.1,phase=0.0,start=0,end=None,freq=10e6,length=100e-9):
-#     if end is None: end = start + length
-#     timeFunc1 = lambda t: amp*np.cos(2*pi*freq*(t-start)+phase)*(start<=t<end)
-#     env1 = Envelope(timeFunc1,None,start,end)
-#     timeFunc2 = lambda t: amp*np.sin(2*pi*freq*(t-start)+phase)*(start<=t<end)
-#     env2 = Envelope(timeFunc2,None,start,end)
-#     return env1,env2
 
