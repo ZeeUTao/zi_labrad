@@ -3,7 +3,7 @@ import pdb
 import numpy as np
 from scipy import optimize
 from scipy.linalg import expm
-
+from functools import reduce
 
 import numpy as np
 
@@ -258,15 +258,16 @@ def qst(diags, U, return_all=False):
 def qst_mle(pxms, Us, F=None, rho0=None):
     """State tomography with maximum-likelihood estimation.
     
-    pxms - a 2D array of measured probabilites.  The first index indicates which
-           operation from Us was applied, while the second index tells which measurement
-           result this was (e.g. 000, 001, etc.).
-          
-    Us - the unitary operations that were applied to the system before measuring.
-    F - a 'fidelity' matrix, relating the actual or 'intrinsic' probabilities to the
-        measured probabilites, via pms = dot(F, pis).  If no fidelity matrix is given,
-        the identity will be used.
-    rho0 - an initial guess for the density matrix, e.g. from linear tomography.
+    Args: 
+        pxms: a 2D array of measured probabilites.  The first index indicates which
+               operation from Us was applied, while the second index tells which measurement
+               result this was (e.g. 000, 001, etc.).
+              
+        Us: the unitary operations that were applied to the system before measuring.
+        F: a 'fidelity' matrix, relating the actual or 'intrinsic' probabilities to the
+            measured probabilites, via pms = dot(F, pis).  If no fidelity matrix is given,
+            the identity will be used.
+        rho0: an initial guess for the density matrix, e.g. from linear tomography.
     """
     N = len(Us[0]) # size of density matrix
     
@@ -346,16 +347,17 @@ def qst_mle(pxms, Us, F=None, rho0=None):
 
 def rst_mle(pxms, Us, F=None, rho0=None):
     """State tomography with maximum-likelihood estimation.
-    
-    pxms - a 2D array of measured probabilites.  The first index indicates which
-           operation from Us was applied, while the second index tells which measurement
-           result this was (e.g. 000, 001, etc.).
-          
-    Us - the unitary operations that were applied to the system before measuring.
-    F - a 'fidelity' matrix, relating the actual or 'intrinsic' probabilities to the
+    Args:
+        pxms: a 2D array of measured probabilites.  The first index indicates which 
+        operation from Us was applied, while the second index tells which measurement
+        result this was (e.g. 000, 001, etc.).
+              
+        Us: the unitary operations that were applied to the system before measuring.
+        F: a 'fidelity' matrix, relating the actual or 'intrinsic' probabilities to the
         measured probabilites, via pms = dot(F, pis).  If no fidelity matrix is given,
         the identity will be used.
-    rho0 - an initial guess for the density matrix, e.g. from linear tomography.
+        
+        rho0: an initial guess for the density matrix, e.g. from linear tomography.
     """
     N = len(Us[0]) # size of density matrix
     

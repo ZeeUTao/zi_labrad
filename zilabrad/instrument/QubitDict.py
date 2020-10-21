@@ -41,7 +41,7 @@ def loadQubits(sample, write_access=False):
 @singleton
 class qubitContext(object):
     """
-    dict for device type to the name of key in Registry
+    create a singleton object to provides servers, information about the experimental devices
     """
     def __init__(self,cxn = None):
         """

@@ -7,7 +7,7 @@ import logging
 import time
 import numpy as np
 
-from zilabrad.instrument.qubitServer import loadQubits,dataset_create,RunAllExperiment
+from zilabrad.instrument.qubitServer import loadQubits,RunAllExperiment
 from zilabrad.instrument.qubitServer import runQubits
 
 from zilabrad.instrument import qubitServer
@@ -76,7 +76,7 @@ def testing_runQ(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,power=-30.0
 
     # create dataset
     dataset = sweeps.prepDataset(sample, name+des, axes, deps,kw=kw)
-    dataset_create(dataset)
+    # dataset_create(dataset)
 
     def runSweeper(devices,para_list):
         freq,power,delay = para_list
