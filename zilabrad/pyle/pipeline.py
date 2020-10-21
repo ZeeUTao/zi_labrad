@@ -65,6 +65,7 @@ def pmap(function, iterable, size=10):
     iterating over it in a for loop. 
     """
     runners = []
+    
     def advance():
         # loop over runners, advancing until one completes
         for runner in itertools.cycle(runners):
@@ -72,6 +73,7 @@ def pmap(function, iterable, size=10):
             if runner.done:
                 break
         # if the first runner is done, pop it and return its output
+        # Otherwise say we aren't done and return no information
         if len(runners) and runners[0].done:
             return (True, runners.pop(0).result)
         return (False, None)
