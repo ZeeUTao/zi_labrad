@@ -60,8 +60,8 @@ class qubitContext(object):
         self.deviceInfo = self.loadInfo(paths=['Servers','devices']) 
         self.servers_qa = self.get_servers('ziQA_id')
         self.servers_hd = self.get_servers('ziHD_id')
-        #self.servers_microwave = self.get_microwaveServer()
-        self.IPdict_microwave = self.deviceInfo['microwave_source']
+        self.servers_microwave = self.get_microwaveServer()
+        self.IPdict_microwave = dict(self.deviceInfo['microwave_source'])
 
 
 
@@ -111,5 +111,5 @@ class qubitContext(object):
         self.deviceInfo = self.loadInfo(paths=['Servers','devices']) 
         self.servers_qa = self.get_servers('ziQA_id')
         self.servers_hd = self.get_servers('ziHD_id')
-        #self.servers_microwave = self.get_microwaveServer()
-        self.IPdict_microwave = self.deviceInfo['microwave_source']
+        self.servers_microwave = self.get_microwaveServer()
+        self.IPdict_microwave = dict(self.deviceInfo['microwave_source'])

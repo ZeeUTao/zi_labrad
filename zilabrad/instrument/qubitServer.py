@@ -35,13 +35,13 @@ def check_device():
     """
     Make sure all device in work before runQ
     """
-    # qContext = qubitContext()
-    # server = qContext.servers_microwave
-    # IPdict = qContext.IPdict_microwave
+    qContext = qubitContext()
+    server = qContext.servers_microwave
+    IPdict = qContext.IPdict_microwave
 
-    # for key,value in IPdict.items():
-    #     server.select_device(value)
-    #     server.output(True)
+    for key,value in IPdict.items():
+        server.select_device(value)
+        server.output(True)
     return
 
 
@@ -52,19 +52,19 @@ def stop_device():
     qContext = qubitContext()
     serverDict = qContext.servers_qa 
     for key,server in serverDict.items():
-        server.stop_subscribe()
+        server.awg_close()
     
     serverDict = qContext.servers_hd
     for key,server in serverDict.items():
-        server.stop_subscribe()
+        server.awg_close()
         
-    # qContext = qubitContext()
-    # server = qContext.servers_microwave
-    # IPdict = qContext.IPdict_microwave
+    qContext = qubitContext()
+    server = qContext.servers_microwave
+    IPdict = qContext.IPdict_microwave
 
-    # for key,value in IPdict.items():
-    #     server.select_device(value)
-    #     server.output(False)
+    for key,value in IPdict.items():
+        server.select_device(value)
+        server.output(False)
     return
     
 
@@ -210,17 +210,17 @@ def getQubits_awgPort(qubits):
 def set_microwaveSource(freqList,powerList):
     """set frequency and power for microwaveSource devices
     """
-    print(freqList[1]['MHz'],powerList[1]['dBm'])
+    print(freqList[0],powerList[0])
 
-    # qContext = qubitContext()
-    # server = qContext.servers_microwave
-    # IPdict = qContext.IPdict_microwave
+    qContext = qubitContext()
+    server = qContext.servers_microwave
+    IPdict = qContext.IPdict_microwave
 
-    # for key,value in IPdict.items():
-    #     server.select_device(value)
-    #     server.output(True)
-    #     server.frequency(freqList[i]['MHz'])
-    #     server.amplitude(powerList[i]['dBm'])
+    for i,key in enumerate(IPdict):
+        server.select_device(IPdict[key])
+        server.output(True)
+        server.frequency(freqList[i]['MHz'])
+        server.amplitude(powerList[i]['dBm'])
     return
         
 
@@ -309,6 +309,8 @@ def setupDevices(qubits):
         _mpAwg_init(qubits)
         qubits[0]['do_init']=True
         logging.info('do_init')
+    ## 临时的玩意~~
+    qa.set_qubit_frequency([qb.demod_freq for qb in qubits])
 
 def runDevices(qubits,wave_AWG,wave_readout):
     qContext = qubitContext()
@@ -318,17 +320,17 @@ def runDevices(qubits,wave_AWG,wave_readout):
 
     # hd = hd['1']
     
-    t0=time.time()
+    # t0=time.time()
     qubits_port = getQubits_awgPort(qubits)
     wave_dict = getQubits_awgWave_dict(ports=qubits_port,waves=wave_AWG)
-    print('wave_dict use %.3f s'%(time.time()-t0))
+    # print('wave_dict use %.3f s'%(time.time()-t0))
 
     ## send data packet to multiply devices
-    t0=time.time()
+    # t0=time.time()
     qa.send_waveform(waveform=wave_readout)
-    print('qa.send_waveform use %.3f s'%(time.time()-t0))
+    # print('qa.send_waveform use %.3f s'%(time.time()-t0))
 
-    t0=time.time()
+    # t0=time.time()
     for dev_id,waveforms in wave_dict.items():
         for awg in range(4): ## default 4 awgs in every zi hdawgs
             port = [p for p in waveforms[awg].keys()]
@@ -343,7 +345,7 @@ def runDevices(qubits,wave_AWG,wave_readout):
                 print('Too many port: %r'%port)
             # else:
             #     pass ## empty case should not send
-    print('hds.send_waveform use %.3f s'%(time.time()-t0))
+    # print('hds.send_waveform use %.3f s'%(time.time()-t0))
 
     ## start to run experiment
     for name,hd in hds.items():
@@ -354,9 +356,9 @@ def runDevices(qubits,wave_AWG,wave_readout):
                 hd.awg_open(awgs_index=[k])
     qa.awg_open()
     ## download experimental data
-    t0=time.time()
+    # t0=time.time()
     data = qa.get_data()
-    print('get_data use %.3f s'%(time.time()-t0))
+    # print('get_data use %.3f s'%(time.time()-t0))
     return data
 
 
@@ -397,17 +399,18 @@ def runQubits(qubits,exp_devices = None):
         (2) clear q.xy/z/dc and their array after send();
     """
     # prepare wave packets
-    time0 = time.time()
+    # time0 = time.time()
     wave_AWG = makeSequence_AWG(qubits)
     wave_readout = makeSequence_readout(qubits)
-    print('wavePrepare use %.3f s'%(time.time()-time0))
-    # q_ref = qubits[0]
+    # print('wavePrepare use %.3f s'%(time.time()-time0))
+    q_ref = qubits[0]
     # ## Now it is only two microwave sources, in the future, it should be modified
-    # set_microwaveSource(freqList = [q_ref['xy_mw_fc'],q_ref['readout_mw_fc']],
-    #                     powerList = [q_ref['xy_mw_power'],q_ref['readout_mw_power']])
-    time0 = time.time()
+    set_microwaveSource(freqList = [q_ref['readout_mw_fc'],q_ref['xy_mw_fc']],
+                        powerList = [q_ref['readout_mw_power'],q_ref['xy_mw_power']])
+    # time0 = time.time()
     setupDevices(qubits)    
-    print('setupDevices use %.3f s'%(time.time()-time0))
+    # print('setupDevices use %.3f s'%(time.time()-time0))
+
     ## run AWG and reaout devices and get data
     data = runDevices(qubits,wave_AWG,wave_readout)
     return data
