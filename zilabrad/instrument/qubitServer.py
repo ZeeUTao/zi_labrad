@@ -13,8 +13,8 @@ import numpy as np
 
 from zilabrad.instrument import waveforms
 from zilabrad.instrument.zurichHelper import zurich_qa, zurich_hd
-from zilabrad.instrument.QubitDict import loadQubits
-from zilabrad.instrument.QubitDict import qubitContext
+from zilabrad.instrument.QubitContext import loadQubits
+from zilabrad.instrument.QubitContext import qubitContext
 from zilabrad.pyle.pipeline import pmap
 
 
@@ -145,7 +145,7 @@ def RunAllExperiment(function,iterable,dataset,
 def set_microwaveSource(freqList,powerList):
     """set frequency and power for microwaveSource devices
     """
-    print(freqList[0],powerList[0])
+    # print(freqList[0],powerList[0])
 
     qContext = qubitContext()
     server = qContext.servers_microwave

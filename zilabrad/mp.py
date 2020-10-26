@@ -24,7 +24,7 @@ from importlib import reload
 
 from zilabrad.instrument.qubitServer import check_device,stop_device
 from zilabrad.instrument.qubitServer import RunAllExperiment as RunAllExp
-from zilabrad.instrument.QubitDict import loadQubits
+from zilabrad.instrument.QubitContext import loadQubits
 from zilabrad.instrument.qubitServer import runQubits as runQ
 
 # from conf import loadInfo
@@ -748,7 +748,7 @@ def ramsey(sample,measure=0,stats=1024,delay=ar[0:10:0.4,us],
 
     # create dataset
     dataset = sweeps.prepDataset(sample, name+des, axes, deps,kw=kw)
-    dataset_create(dataset)
+    
 
     q_copy = q.copy()
     def runSweeper(devices,para_list):
@@ -832,7 +832,6 @@ def s21_dispersiveShift(sample,measure=0,stats=1024,freq=ar[6.4:6.5:0.02,GHz],de
 
     # create dataset
     dataset = sweeps.prepDataset(sample, name+des, axes, deps,kw=kw)
-    dataset_create(dataset)
 
     def runSweeper(devices,para_list):
         freq,bias,power,sb_freq,mw_power,delay = para_list
