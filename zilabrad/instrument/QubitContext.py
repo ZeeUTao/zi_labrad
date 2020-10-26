@@ -132,7 +132,7 @@ class qubitContext(object):
             ports = []
             for q in qubits:
                 channels = dict(q['channels'])
-                # the order must be 'dc,xy,z'
+                # the order must be 'dc,xy,z'! match the order in qubitServer
                 if 'dc' in q.keys():
                     ports += [channels['dc']]
                 if 'xy' in q.keys():

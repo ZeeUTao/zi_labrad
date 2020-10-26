@@ -58,7 +58,6 @@ def stop_device():
     for key,server in serverDict.items():
         server.awg_close()
         
-    qContext = qubitContext()
     server = qContext.servers_microwave
     IPdict = qContext.IPdict_microwave
 
@@ -99,9 +98,9 @@ def RunAllExperiment(function,iterable,dataset,
     start experiment with special sequences according to the parameters
     
     Args:
-        function: give special sequences, parameters, and start exp_devices, that are to be called by run()
+        function: give special sequences, parameters
         iterable: iterated over to produce values that are fed to function as parameters.
-        dataset: zilabrad.pyle.datasaver.Dataset
+        dataset: zilabrad.pyle.datasaver.Dataset, object for data saving
         collect: if True, collect the result into an array and return it; else, return an empty list
         raw: discard swept_paras if raw == True
     """
@@ -218,7 +217,7 @@ def makeSequence_AWG(qubits):
     waveServer.set_tlist(start,end,fs=FS)
     
     for q in qubits: 
-        # the order must be 'dc,xy,z'
+        # the order must be 'dc,xy,z' ! match the order in QubitContext
         
         ## line [DC]
         if 'dc' in q.keys():
@@ -281,7 +280,7 @@ def setupDevices(qubits):
     # initialization
     qa.set_adc_trig_delay(q_ref['bias_start'][s]+q_ref['experiment_length'])
     
-    if 'do_init' not in qubits[0].keys():
+    if 'do_init' not in q_ref.keys():
         _mpAwg_init(qubits)
         qubits[0]['do_init']=True
         logging.info('do_init')
@@ -368,8 +367,7 @@ def runQubits(qubits,exp_devices = None):
         _runQ_servers (list/tuple): instances used to control device
 
     TODO:
-    (1) check _is_runfirst=True? Need run '_mpAwg_init' at first running;
-    (2) clear q.xy/z/dc and their array after send();
+    - clear q.xy/z/dc and their array after send();
     """
     # prepare wave packets
     # time0 = time.time()
