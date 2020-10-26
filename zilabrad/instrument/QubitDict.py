@@ -56,15 +56,22 @@ class qubitContext(object):
         'ziQA_id':zurich_qa,
         'ziHD_id':zurich_hd,
         }
-
+        
+        self.__isNewExpStart = True
+        
         self.deviceInfo = self.loadInfo(paths=['Servers','devices']) 
         self.servers_qa = self.get_servers('ziQA_id')
         self.servers_hd = self.get_servers('ziHD_id')
         self.servers_microwave = self.get_microwaveServer()
         self.IPdict_microwave = dict(self.deviceInfo['microwave_source'])
-
-
-
+        
+        
+    @staticmethod
+    def getQubits_paras(qubits: dict, key: str):
+        """ Get specified parameters from dictionary (qubits)
+        """
+        return [_qubit[key] for _qubit in qubits]
+    
     def loadInfo(self,paths):
         """
         load the sample information from specified directory.
@@ -107,6 +114,42 @@ class qubitContext(object):
         server = self.cxn[name]
         return server
 
+    def getPorts(self,qubits):
+        """
+        Get the AWG ports for zurich HD according to whether the corresponding keys exist
+        Args: 
+            qubits, list of dictionary
+        Returns: 
+            ports (list)
+            for example, [('hd_1', 7), ('hd_1', 5), ('hd_1', 6), ('hd_1', 8)]
+        
+        TODO: 
+        1. ports dictionary should only be created once in the beginning of experiment. 
+        """
+        if hasattr(self,'ports'):
+            return self.ports
+        else:
+            ports = []
+            for q in qubits:
+                channels = dict(q['channels'])
+                # the order must be 'dc,xy,z'
+                if 'dc' in q.keys():
+                    ports += [channels['dc']]
+                if 'xy' in q.keys():
+                    ports += [channels['xy_I'],channels['xy_Q']]
+                if 'z' in q.keys():
+                    ports += [channels['z']]
+            self.ports = ports
+            return self.ports
+            
+    def clearTempParas(self):
+        attr_names = ['ports']
+        for name in attr_names:
+            if hasattr(self,name):
+                delattr(self,name)
+            
+            
+            
     def refresh(self):
         self.deviceInfo = self.loadInfo(paths=['Servers','devices']) 
         self.servers_qa = self.get_servers('ziQA_id')

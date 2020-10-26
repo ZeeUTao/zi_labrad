@@ -181,6 +181,11 @@ class zurich_qa(object):
         if self.noisy:
             print('\n AWG running. \n')
 
+    def awg_close(self):       
+        # Stop result unit
+        self.daq.unsubscribe(self.paths)
+        self.daq.setInt('/{:s}/qas/0/result/enable'.format(self.id), 0)
+
     ####-- AWGs waveform --####
     def awg_builder(self,waveform=[[0],[0]],awg_index=0):
         """ Build waveforms sequencer. Then compile and send it to devices.
@@ -349,10 +354,10 @@ class zurich_qa(object):
             print('\n', 'Subscribed paths: \n ', self.paths, '\n')
         self.daq.subscribe(self.paths)
 
-    def stop_subscribe(self):       
-        # Stop result unit
-        self.daq.unsubscribe(self.paths)
-        self.daq.setInt('/{:s}/qas/0/result/enable'.format(self.id), 0)
+    # def stop_subscribe(self):       
+    #     # Stop result unit
+    #     self.daq.unsubscribe(self.paths)
+    #     self.daq.setInt('/{:s}/qas/0/result/enable'.format(self.id), 0)
 
     def acquisition_poll(self, daq, paths, num_samples, timeout=10.0):
         """ Polls the UHFQA for data.
@@ -470,7 +475,7 @@ class zurich_hd:
             if self.noisy:
                 print('%s AWG%d running.'%(self.id,i))
 
-    def awg_close_all(self,awgs_index=[0,1,2,3]):
+    def awg_close(self,awgs_index=[0,1,2,3]):
         ## stop specific awg following awgs_index
         for i in awgs_index:
             self.daq.setInt('/{:s}/awgs/{:d}/enable'.format(self.id,i), 0)
