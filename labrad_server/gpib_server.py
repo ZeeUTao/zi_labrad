@@ -69,7 +69,7 @@ class GPIBBusServer(LabradServer):
     """Provides direct access to GPIB-enabled devices."""
     name = '%LABRADNODE% GPIB Bus'
     
-    refreshInterval = 120
+    refreshInterval = 10
     defaultTimeout = 5000.0 * units.s
 
     def initServer(self):
