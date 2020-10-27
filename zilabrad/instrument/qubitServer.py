@@ -391,6 +391,8 @@ def runQubits(qubits,exp_devices = None):
     # print('setupDevices use %.3f s'%(time.time()-time0))
 
     ## run AWG and reaout devices and get data
+    # time0 = time.time()
     data = runDevices(qubits,wave_AWG,wave_readout)
+    # print('get data use %.3f s'%(time.time()-time0))
     return data
 

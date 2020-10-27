@@ -46,7 +46,6 @@ from configparser import ConfigParser
 import os, re
 from datetime import datetime
 import numpy
-DimensionlessArray = array
 
 useNumpy = True
 
@@ -506,6 +505,7 @@ class Dataset:
             # TODO: big security hole! eval can execute arbitrary code
             
             getS = S.get(sec, 'Data', raw=True)
+            # print(getS)
             # fix the bug in the delphi grapher and registry 
             # due to the python3 pylabrad 
             # 1. python3 has no long type

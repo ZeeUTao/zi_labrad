@@ -45,12 +45,21 @@ import numpy as np
 from zilabrad.pyle.util import sweeptools
 from zilabrad.pyle.sweeps import checkAbort
 from labrad.units import Unit,Value
+import labrad
 _unitSpace = ('V','mV','us','ns','s','GHz','MHz','kHz','Hz','dBm','rad','None')
 V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l  = [Unit(s) for s in _unitSpace]
 ar = sweeptools.r
 
 datahelper = datahelp()
 
+def dataset_create(dataset):
+    """Create the dataset."""
+    dv = labrad.connect().data_vault
+    dv.cd(dataset.path, dataset.mkdir)
+    print(dataset.dependents)
+    dv.new(dataset.name, dataset.independents, dataset.dependents)
+    if len(dataset.params):
+        dv.add_parameters(tuple(dataset.params))
 
 """
 end import for pylabrad 
@@ -323,7 +332,7 @@ def spectroscopy_Nq(sample,measure=[0],stats=1024,freq=6.0*GHz,specLen=1*us,spec
 
 @expfunc_decorator
 def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phase=0,
-    mw_power=None,bias=None,power=None,sb_freq=None,
+    mw_power=None,bias=None,power=None,sb_freq=None,zpa=0.0,
     name='s21_scan',des='',back=False):
     """ 
     s21 scanning
@@ -337,7 +346,7 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phase=0,
     q = qubits[measure]
     q.channels = dict(q['channels'])
     q.stats = stats
-
+    if freq == None: freq = q['readout_amp']
     if bias == None:
         bias = q['bias']
     if power == None:
@@ -351,7 +360,7 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phase=0,
     q.awgs_pulse_len += np.max(delay) ## add max length of hd waveforms 
 
     ## set some parameters name;
-    axes = [(freq,'freq'),(bias,'bias'),(power,'power'),(sb_freq,'sb_freq'),(mw_power,'mw_power'),
+    axes = [(freq,'freq'),(bias,'bias'),(zpa,'zpa'),(power,'power'),(sb_freq,'sb_freq'),(mw_power,'mw_power'),
             (delay,'delay'),(phase,'phase')]
     deps = [('Amplitude','s21 for','a.u.'),('Phase','s21 for','rad'),
                 ('I','',''),('Q','','')]
@@ -359,16 +368,17 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phase=0,
 
     # create dataset
     dataset = sweeps.prepDataset(sample, name+des, axes, deps,measure=measure,kw=kw)
+    dataset_create(dataset)
 
     def runSweeper(devices,para_list):
-        freq,bias,power,sb_freq,mw_power,delay,phase = para_list
+        freq,bias,zpa,power,sb_freq,mw_power,delay,phase = para_list
         q.power_r = power2amp(power)
         q['readout_mw_fc'] = (freq - q.demod_freq)*Hz
         # for qb in qubits: ## for sweeping sideband
             # qb.demod_freq = freq - qb['readout_mw_fc']['Hz']
 
         start = 0   
-        q.z = waveforms.square(amp=0)
+        q.z = waveforms.square(amp=zpa)
         q.xy = [waveforms.square(amp=0),waveforms.square(amp=0)]
         q['bias'] = bias
 

@@ -43,6 +43,8 @@ logging.basicConfig(format='%(asctime)s | %(name)s [%(levelname)s] : %(message)s
 
 @singleton
 class ziDAQ(object):
+    """singleton class for zurich daq
+    """
     def __init__(self,connectivity=8004,labone_ip='localhost'):
         ## connectivity must 8004 for zurish instruments
         self.daq = zhinst.ziPython.ziDAQServer(labone_ip,connectivity,6)
@@ -53,6 +55,13 @@ class ziDAQ(object):
 
 @singletonMany
 class zurich_qa(object):
+    """server for zurich qa
+    Args:
+        obj_name (str): specify the object, the object with the same obj_name is singleton. 
+        Example: If the class has been instantiated with obj_name=='obj1',  
+        calling it again via 'zurich_qa(obj_name='obj1')' will not re-initiate but get the old object. 
+    Instance: The instance now will return a dictionary of objects (value) and their obj_name (key) that has been created
+    """
     def __init__(self,obj_name='QA_1',device_id='dev2592',labone_ip='localhost'): 
         self.obj_name = obj_name
         self.id = device_id
@@ -405,10 +414,11 @@ class zurich_qa(object):
 
     def get_data(self):
         data = self.acquisition_poll(self.daq, self.paths, self.result_samples, timeout=10)
-        val,chan = [],0
+        val = []
+        # chan = 0
         for path, samples in data.items():
             val.append(samples)
-            chan += 1
+            # chan += 1
         return val
 
 
@@ -416,6 +426,13 @@ class zurich_qa(object):
 
 @singletonMany
 class zurich_hd:
+    """server for zurich hd
+    Args:
+        obj_name (str): specify the object, the object with the same obj_name is singleton. 
+        Example: If the class has been instantiated with obj_name=='obj1',  
+        calling it again via 'zurich_hd(obj_name='obj1')' will not re-initiate but get the old object. 
+    Instance: The instance now will return a dictionary of objects (value) and their obj_name (key) that has been created
+    """
     def __init__(self,obj_name = 'HD_1',device_id='dev8334',labone_ip='localhost'):   
         self.id = device_id
         self.obj_name = obj_name
