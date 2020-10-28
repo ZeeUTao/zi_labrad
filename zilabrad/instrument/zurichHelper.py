@@ -528,13 +528,13 @@ class zurich_hd:
     def update_pulse_length(self,awg_index):
         hdinfo = self.daq.getList('/{:s}/awgs/{:d}/waveform/waves/0'.format(self.id,awg_index))
         if len(hdinfo)==0:
-            self.waveform_length[awg_index] = 0
+            self.waveform_length[awg_index] = -1
         elif len(hdinfo)==1:
             self.waveform_length[awg_index] = int(len(hdinfo[0][1][0]['vector'])/2) ## consider two channel wave;
         else:
             raise Exception('Unknown HD infomation:\n',hdinfo)
         if self.noisy:
-            print('[%s] update_pulse_length: %r'%(self.id,self.waveform_length))
+            print('[%s-AWG%d] update_pulse_length: %r'%(self.id,awg_index,self.waveform_length))
 
     #####------- bulid and send AWGs ------- #####
     def awg_builder(self,waveform=[[0]],port=[],awg_index=0):
@@ -611,7 +611,7 @@ class zurich_hd:
         """
         waveform_native = convert_awg_waveform(waveform)
         if self.noisy:
-            print('reload waveform length: %d'%len(waveform_native))
+            print('[%s-AWG%d] reload waveform length: %d'%(self.id,awg_index,len(waveform_native)))
         path = '/{:s}/awgs/{:d}/waveform/waves/{:d}'.format(self.id,awg_index,index)
         self.daq.setVector(path, waveform_native)
       
@@ -627,7 +627,7 @@ class zurich_hd:
             sequencer again.
         """
         _n_ = self.waveform_length[awg_index] - len(waveform[0])
-        if _n_ > 0:
+        if _n_ >= 0:
             if len(waveform) == 1: ## only one port be used, another should fill zero
                 waveform_add = [[],[]] ## port = 1 or 2, (3-port) is another one.
                 waveform_add[port[0]-1] = np.hstack((waveform[0],np.zeros(_n_)))
@@ -642,7 +642,7 @@ class zurich_hd:
             except:
                 self.update_pulse_length(awg_index=awg_index)
                 _n_ = self.waveform_length[awg_index] - len(waveform[0])
-                if _n_ > 0:
+                if _n_ >= 0:
                     if len(waveform) == 1: ## only one port be used, another should fill zero
                         waveform_add = [[],[]] ## port = 1 or 2, 3-port is another one.
                         waveform_add[port[0]-1] = np.hstack((waveform[0],np.zeros(_n_)))
@@ -664,7 +664,7 @@ class zurich_hd:
                     self.awg_builder(waveform=waveform_add,port=port,awg_index=awg_index)
                     print('%r-awg%d builder: %.3f s'%(self.id,awg_index,time.time()-t0))
         else:
-            print('Bulid [%s-AWG%d] Sequencer (len=%r > %r)'%(self.id,awg_index,len(waveform[0]),self.waveform_length[awg_index]))
+            print('Bulid [%s-AWG%d] Sequencer2 (len=%r > %r)'%(self.id,awg_index,len(waveform[0]),self.waveform_length[awg_index]))
             if len(waveform) == 1:
                 waveform_add = [[],[]] ## port = 1 or 2, (3-port) is another one.
                 waveform_add[port[0]-1] = waveform[0]

@@ -211,7 +211,7 @@ def makeSequence_AWG(qubits):
     ### ----bias_start previously -----  XY,Z, pulse quantum getes... ------ readout ----- bias_end ---
     q_ref = qubits[0]
     start = -Unit2SI(q_ref['bias_start'])
-    end = Unit2SI(q_ref['bias_end']) + Unit2SI(q_ref['experiment_length']) + Unit2SI(q_ref['awgs_pulse_len']) + Unit2SI(q_ref['readout_len'])
+    end = Unit2SI(q_ref['bias_end']) + Unit2SI(q_ref['awgs_pulse_len']) + Unit2SI(q_ref['readout_len'])
     
     ## this is just set parameters, not really generate a list, which is slow
     waveServer.set_tlist(start,end,fs=FS)
