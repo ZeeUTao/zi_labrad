@@ -14,7 +14,17 @@ To install and run scalabrad, you can click on [scalabrad](https://github.com/la
 
 If you do not need to change or develop it, a simpler way is go to [binary](https://bintray.com/labrad/generic/scalabrad#files), which provides the packages to download, e.g., [scalabrad-0.8.3.tar.gz](https://bintray.com/labrad/generic/download_file?file_path=scalabrad-0.8.3.tar.gz). 
 
-You need to unzip it and remember the targeted directory. It would be better to map a specific folder into a disk (like `M:`) , you can
+### Java
+
+Java8 is required for running the binary distribution of scalabrad. 
+
+> You'll need to have Java 8 installed on your system. 
+
+After installation of Java8, you need add the environmental variable `JAVA_HOME  ` to be the directory of installation, for example `D:\Java8`
+
+
+
+Now you can unzip the scalabrad files, and remember the targeted directory. It would be better to map a specific folder into a disk (like `M:`) , you can
 
 - go to the targeted directory
 - run the following bash in CMD (command)
