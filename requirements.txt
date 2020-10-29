@@ -1,0 +1,6 @@
+ipython~=7.18.1
+jupyterlab~=2.2.8
+matplotlib~=3.3.2
+numba~=0.51.2
+pylabrad==0.98.1
+zhinst~=20.7.2325
