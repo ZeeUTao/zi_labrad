@@ -132,7 +132,7 @@ def testing_runQ(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,power=-30.0
         freq,power,delay = para_list
         q.power_r = 10**(power/20-0.5)
         data = runDummy([q],devices)
-        time.sleep(0.1)
+        time.sleep(0.01)
         for _d_ in data:
             amp = np.mean(np.abs(_d_))/q.power_r ## unit: dB; only relative strength;
             phase = np.mean(np.angle(_d_))
@@ -151,5 +151,5 @@ def run(ss=None):
         import labrad
         cxn=labrad.connect()
         ss = switchSession(cxn,user='hwh',session=None)
-    testing_runQ(ss,freq=ar[6.0:6.9:0.01,GHz])
+    testing_runQ(ss,freq=ar[6.0:6.9:0.001,GHz])
     return

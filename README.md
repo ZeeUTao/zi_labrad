@@ -6,7 +6,7 @@ python script to control Zurich instruments by using labrad.
 
 ## Requirements
 
-- python3, (suggested: 3.6，3.7)
+- python3 (suggested: 3.7)
 
 - Clone the repository and
 
@@ -41,7 +41,7 @@ pip install -r docs_requirements.txt
 Go to the directory `docs` and
 
 ```bash
-.\docs\make html
+make html
 ```
 
 This generate a webpage, index.html, in `docs/_build/html` with the rendered html.
