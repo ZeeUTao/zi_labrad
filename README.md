@@ -10,11 +10,13 @@ python script to control Zurich instruments by using labrad.
 
 - [scalabrad](https://github.com/ZeeUTao/scalabrad)
 
-  Binary distribution of scalabrad are distributed via [binary](https://bintray.com/labrad/generic/scalabrad#files) Here is [source code of scalabrad](https://github.com/ZeeUTao/scalabrad).
+  Binary distribution of scalabrad are distributed via [binary](https://bintray.com/labrad/generic/scalabrad#files). Here is [source code of scalabrad](https://github.com/ZeeUTao/scalabrad). 
+
+  To run the binary distribution
 
   > You'll need to have Java 8 installed on your system. 
 
-  Add the environmental variable `JAVA_HOME  ` to be the directory of installed Java8, for example `D:\Java8`
+  and add the environmental variable `JAVA_HOME  ` to be the directory of installed Java8, for example `D:\Java8`
 
   
 
