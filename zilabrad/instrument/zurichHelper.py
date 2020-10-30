@@ -537,7 +537,7 @@ class zurich_hd:
             print('[%s-AWG%d] update_pulse_length: %r'%(self.id,awg_index,self.waveform_length))
 
     #####------- bulid and send AWGs ------- #####
-    def awg_builder(self,waveform=[[0]],port=[],awg_index=0):
+    def awg_builder(self,waveform=[[0]],port=[],awg_index=0,loop=False):
         """ Build waveforms sequencer. Then compile and send it to devices.
         """
         # create waveform
@@ -568,6 +568,8 @@ class zurich_hd:
         awg_program = awg_program.replace('$str0', str0)
         awg_program = awg_program.replace('$play_str', play_str)
         awg_program = awg_program.replace('_c0_', str(self.FS))
+        if loop:
+            awg_program = awg_program.replace('waitDigTrigger(1);', '//waitDigTrigger(1);')
         self.awg_upload_string(awg_program,awg_index=awg_index)
         self.update_pulse_length(awg_index=awg_index)
 
