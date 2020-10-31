@@ -17,7 +17,7 @@ located in `Registry\Servers\devices`
 Example of python dictionary
 
 ```python
-{'labone_ip': '10.21.6.154',
+{'labone_ip': '10.00.0.000',
  'microwave_server': 'anritsu_server',
  'microwave_source': [('anritsu_r_1',
    'dirac GPIB Bus - TCPIP0::192.168.1.240::inst0::INSTR'),
