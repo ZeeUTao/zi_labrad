@@ -1,5 +1,5 @@
 import labrad
-from zilabrad.pyle import types
+from labrad import types
 
 
 class Dataset(object):

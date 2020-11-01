@@ -1,6 +1,6 @@
 .. _gettingstarted:
 
-Core
+Development Guide
 =====================================
 
 .. toctree::

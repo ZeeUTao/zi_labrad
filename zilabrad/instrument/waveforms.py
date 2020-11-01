@@ -97,6 +97,8 @@ class waveServer(object):
     
     
     def set_tlist(self,start,end,fs):
+        """just set parameters, not really generate a list which is slow
+        """
         self.start = start
         self.end = end
         self.fs = fs

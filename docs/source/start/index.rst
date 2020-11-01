@@ -7,3 +7,4 @@ Getting Started
    :maxdepth: 2
 
    install.md
+   startRun.md

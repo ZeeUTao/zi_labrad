@@ -20,8 +20,8 @@ from zilabrad.pyle.util import sweeptools as st
 
 from zilabrad.instrument import waveforms
 import zilabrad.instrument.qubitServer as qubitServer
-from zilabrad.instrument.QubitDict import qubitContext
-from zilabrad.instrument.QubitDict import update_session
+from zilabrad.instrument.QubitContext import qubitContext
+from zilabrad.instrument.QubitContext import update_session
 
 from zilabrad import mp
 

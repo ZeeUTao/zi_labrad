@@ -43,6 +43,8 @@ logging.basicConfig(format='%(asctime)s | %(name)s [%(levelname)s] : %(message)s
 
 @singleton
 class ziDAQ(object):
+    """singleton class for zurich daq
+    """
     def __init__(self,connectivity=8004,labone_ip='localhost'):
         ## connectivity must 8004 for zurish instruments
         self.daq = zhinst.ziPython.ziDAQServer(labone_ip,connectivity,6)
@@ -53,6 +55,13 @@ class ziDAQ(object):
 
 @singletonMany
 class zurich_qa(object):
+    """server for zurich qa
+    Args:
+        obj_name (str): specify the object, the object with the same obj_name is singleton. 
+        Example: If the class has been instantiated with obj_name=='obj1',  
+        calling it again via 'zurich_qa(obj_name='obj1')' will not re-initiate but get the old object. 
+    Instance: The instance now will return a dictionary of objects (value) and their obj_name (key) that has been created
+    """
     def __init__(self,obj_name='QA_1',device_id='dev2592',labone_ip='localhost'): 
         self.obj_name = obj_name
         self.id = device_id
@@ -180,6 +189,11 @@ class zurich_qa(object):
         self.daq.syncSetInt('/{:s}/awgs/0/enable'.format(self.id), 1)
         if self.noisy:
             print('\n AWG running. \n')
+
+    def awg_close(self):       
+        # Stop result unit
+        self.daq.unsubscribe(self.paths)
+        self.daq.setInt('/{:s}/qas/0/result/enable'.format(self.id), 0)
 
     ####-- AWGs waveform --####
     def awg_builder(self,waveform=[[0],[0]],awg_index=0):
@@ -349,10 +363,10 @@ class zurich_qa(object):
             print('\n', 'Subscribed paths: \n ', self.paths, '\n')
         self.daq.subscribe(self.paths)
 
-    def stop_subscribe(self):       
-        # Stop result unit
-        self.daq.unsubscribe(self.paths)
-        self.daq.setInt('/{:s}/qas/0/result/enable'.format(self.id), 0)
+    # def stop_subscribe(self):       
+    #     # Stop result unit
+    #     self.daq.unsubscribe(self.paths)
+    #     self.daq.setInt('/{:s}/qas/0/result/enable'.format(self.id), 0)
 
     def acquisition_poll(self, daq, paths, num_samples, timeout=10.0):
         """ Polls the UHFQA for data.
@@ -400,10 +414,11 @@ class zurich_qa(object):
 
     def get_data(self):
         data = self.acquisition_poll(self.daq, self.paths, self.result_samples, timeout=10)
-        val,chan = [],0
+        val = []
+        # chan = 0
         for path, samples in data.items():
             val.append(samples)
-            chan += 1
+            # chan += 1
         return val
 
 
@@ -411,6 +426,13 @@ class zurich_qa(object):
 
 @singletonMany
 class zurich_hd:
+    """server for zurich hd
+    Args:
+        obj_name (str): specify the object, the object with the same obj_name is singleton. 
+        Example: If the class has been instantiated with obj_name=='obj1',  
+        calling it again via 'zurich_hd(obj_name='obj1')' will not re-initiate but get the old object. 
+    Instance: The instance now will return a dictionary of objects (value) and their obj_name (key) that has been created
+    """
     def __init__(self,obj_name = 'HD_1',device_id='dev8334',labone_ip='localhost'):   
         self.id = device_id
         self.obj_name = obj_name
@@ -470,7 +492,7 @@ class zurich_hd:
             if self.noisy:
                 print('%s AWG%d running.'%(self.id,i))
 
-    def awg_close_all(self,awgs_index=[0,1,2,3]):
+    def awg_close(self,awgs_index=[0,1,2,3]):
         ## stop specific awg following awgs_index
         for i in awgs_index:
             self.daq.setInt('/{:s}/awgs/{:d}/enable'.format(self.id,i), 0)
@@ -506,16 +528,16 @@ class zurich_hd:
     def update_pulse_length(self,awg_index):
         hdinfo = self.daq.getList('/{:s}/awgs/{:d}/waveform/waves/0'.format(self.id,awg_index))
         if len(hdinfo)==0:
-            self.waveform_length[awg_index] = 0
+            self.waveform_length[awg_index] = -1
         elif len(hdinfo)==1:
             self.waveform_length[awg_index] = int(len(hdinfo[0][1][0]['vector'])/2) ## consider two channel wave;
         else:
             raise Exception('Unknown HD infomation:\n',hdinfo)
         if self.noisy:
-            print('[%s] update_pulse_length: %r'%(self.id,self.waveform_length))
+            print('[%s-AWG%d] update_pulse_length: %r'%(self.id,awg_index,self.waveform_length))
 
     #####------- bulid and send AWGs ------- #####
-    def awg_builder(self,waveform=[[0]],port=[],awg_index=0):
+    def awg_builder(self,waveform=[[0]],port=[],awg_index=0,loop=False):
         """ Build waveforms sequencer. Then compile and send it to devices.
         """
         # create waveform
@@ -546,6 +568,8 @@ class zurich_hd:
         awg_program = awg_program.replace('$str0', str0)
         awg_program = awg_program.replace('$play_str', play_str)
         awg_program = awg_program.replace('_c0_', str(self.FS))
+        if loop:
+            awg_program = awg_program.replace('waitDigTrigger(1);', '//waitDigTrigger(1);')
         self.awg_upload_string(awg_program,awg_index=awg_index)
         self.update_pulse_length(awg_index=awg_index)
 
@@ -589,7 +613,7 @@ class zurich_hd:
         """
         waveform_native = convert_awg_waveform(waveform)
         if self.noisy:
-            print('reload waveform length: %d'%len(waveform_native))
+            print('[%s-AWG%d] reload waveform length: %d'%(self.id,awg_index,len(waveform_native)))
         path = '/{:s}/awgs/{:d}/waveform/waves/{:d}'.format(self.id,awg_index,index)
         self.daq.setVector(path, waveform_native)
       
@@ -605,7 +629,7 @@ class zurich_hd:
             sequencer again.
         """
         _n_ = self.waveform_length[awg_index] - len(waveform[0])
-        if _n_ > 0:
+        if _n_ >= 0:
             if len(waveform) == 1: ## only one port be used, another should fill zero
                 waveform_add = [[],[]] ## port = 1 or 2, (3-port) is another one.
                 waveform_add[port[0]-1] = np.hstack((waveform[0],np.zeros(_n_)))
@@ -620,7 +644,7 @@ class zurich_hd:
             except:
                 self.update_pulse_length(awg_index=awg_index)
                 _n_ = self.waveform_length[awg_index] - len(waveform[0])
-                if _n_ > 0:
+                if _n_ >= 0:
                     if len(waveform) == 1: ## only one port be used, another should fill zero
                         waveform_add = [[],[]] ## port = 1 or 2, 3-port is another one.
                         waveform_add[port[0]-1] = np.hstack((waveform[0],np.zeros(_n_)))
@@ -642,7 +666,7 @@ class zurich_hd:
                     self.awg_builder(waveform=waveform_add,port=port,awg_index=awg_index)
                     print('%r-awg%d builder: %.3f s'%(self.id,awg_index,time.time()-t0))
         else:
-            print('Bulid [%s-AWG%d] Sequencer (len=%r > %r)'%(self.id,awg_index,len(waveform[0]),self.waveform_length[awg_index]))
+            print('Bulid [%s-AWG%d] Sequencer2 (len=%r > %r)'%(self.id,awg_index,len(waveform[0]),self.waveform_length[awg_index]))
             if len(waveform) == 1:
                 waveform_add = [[],[]] ## port = 1 or 2, (3-port) is another one.
                 waveform_add[port[0]-1] = waveform[0]

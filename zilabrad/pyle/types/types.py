@@ -43,8 +43,8 @@ import warnings
 
 import numpy as np
 
-import zilabrad.pyle.units as U
-from zilabrad.pyle.units import Value, Complex
+import labrad.units as U
+from labrad.units import Value, Complex
 
 try:
     from types import InstanceType
@@ -1011,6 +1011,101 @@ class TCluster(Type):
 registerTypeFunc(tuple, TCluster.__lrtype__)
 
 
+#class LRChoice(Type):
+#    """Represents a choice among different data types."""
+#
+#    tag = '<'
+#
+#    def __init__(self, *choices):
+#        self.choices = choices
+#
+#    def __str__(self):
+#        return '<%s>' % '|'.join(str(i) for i in self.choices)
+#
+#    def __repr__(self):
+#        contents = '<%s>' % '|'.join(repr(i) for i in self.choices)
+#        return self.__class__.__name__ + contents
+#
+#    @classmethod
+#    def __parse__(cls, s):
+#        choices = []
+#        while len(s) and s[0] != '>':
+#            cluster = []
+#            while len(s) and s[0] != '|':
+#                cluster.append(parseSingleType(s))
+#            if len(cluster) == 0:
+#                raise Exception('Type choices cannot be empty')
+#            elif len(cluster) == 1:
+#                choices.append(cluster[0])
+#            else:
+#                choices.append(TCluster(*choices))
+#            if s.get(1) != '|': # pop off the '|'
+#                raise Exception('Expected "|" to delimit type choices.')
+#        if s.get(1) != '>':
+#            raise Exception('Unbalanced brackets in choice.')
+#        return cls(*choices)
+#
+#    #@classmethod
+#    #def __lrtype__(cls, c):
+#    #    return cls(*[getType(i) for i in c])
+#
+#    def __len__(self):
+#        return len(self.choices)
+#
+#    def __getitem__(self, key):
+#        return self.choices[key]
+#
+#    def __le__(self, other):
+#        """Test whether this type is more specific than another.
+#
+#        Compatibility requires that both clusters have the same length,
+#        and all of our items are more specific than the corresponding
+#        items in the other cluster.
+#        """
+#        # FIXME: implement this
+#        return (type(other) == TAny or
+#                all(s <= other for s in self.choices))
+#
+#    def isFullySpecified(self):
+#        return len(self.choices) == 1
+#
+#    @property
+#    def isFixedWidth(self):
+#        return False
+#        #if hasattr(self, '_isFixedWidth'):
+#        #    return self._isFixedWidth
+#        #self._isFixedWidth = all(item.isFixedWidth for item in self.items)
+#        #if self._isFixedWidth:
+#        #    self.width = sum(item.width for item in self.items)
+#
+#    def __width__(self, s, endianness):
+#        return sum(item.__width__(s, endianness) for item in self.items)
+#
+#    def __unflatten__(self, s, endianness):
+#        """Unflatten items into a python tuple."""
+#        return tuple(unflatten(s, t, endianness) for t in self.items)
+#
+#    def __flatten__(self, c, endianness):
+#        """Flatten python tuple to LabRAD cluster."""
+#        if len(c) == 0:
+#            raise FlatteningError('Cannot flatten zero-length clusters')
+#        if len(c) != len(self.items):
+#            raise FlatteningError('Cannot flatten %s to %s' % (c, self.items))
+#        if TAny() in self.items:
+#            strs = []
+#            items = []
+#            for t, elem in zip(self.items, c):
+#                if t == TAny():
+#                    s, t = flatten(elem, endianness=endianness)
+#                    strs.append(s)
+#                    items.append(t)
+#                else:
+#                    flat = t.flatten(elem, endianness)
+#                    strs.append(flat.bytes)
+#                    items.append(flat.tag)
+#            self.items = items # warning: type mutated here
+#            return ''.join(strs)
+#        return ''.join(t.flatten(elem, endianness) for t, elem in zip(self.items, c))
 
 
 class TList(Type):

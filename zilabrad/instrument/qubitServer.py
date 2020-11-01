@@ -13,8 +13,8 @@ import numpy as np
 
 from zilabrad.instrument import waveforms
 from zilabrad.instrument.zurichHelper import zurich_qa, zurich_hd
-from zilabrad.instrument.QubitDict import loadQubits
-from zilabrad.instrument.QubitDict import qubitContext
+from zilabrad.instrument.QubitContext import loadQubits
+from zilabrad.instrument.QubitContext import qubitContext
 from zilabrad.pyle.pipeline import pmap
 
 
@@ -35,13 +35,13 @@ def check_device():
     """
     Make sure all device in work before runQ
     """
-    # qContext = qubitContext()
-    # server = qContext.servers_microwave
-    # IPdict = qContext.IPdict_microwave
+    qContext = qubitContext()
+    server = qContext.servers_microwave
+    IPdict = qContext.IPdict_microwave
 
-    # for key,value in IPdict.items():
-    #     server.select_device(value)
-    #     server.output(True)
+    for key,value in IPdict.items():
+        server.select_device(value)
+        server.output(True)
     return
 
 
@@ -52,19 +52,18 @@ def stop_device():
     qContext = qubitContext()
     serverDict = qContext.servers_qa 
     for key,server in serverDict.items():
-        server.stop_subscribe()
+        server.awg_close()
     
     serverDict = qContext.servers_hd
     for key,server in serverDict.items():
-        server.stop_subscribe()
+        server.awg_close()
         
-    # qContext = qubitContext()
-    # server = qContext.servers_microwave
-    # IPdict = qContext.IPdict_microwave
+    server = qContext.servers_microwave
+    IPdict = qContext.IPdict_microwave
 
-    # for key,value in IPdict.items():
-    #     server.select_device(value)
-    #     server.output(False)
+    for key,value in IPdict.items():
+        server.select_device(value)
+        server.output(False)
     return
     
 
@@ -84,6 +83,155 @@ def Unit2num(a):
     else:
         return a[a.unit] 
 
+
+
+    
+    
+def RunAllExperiment(function,iterable,dataset,
+                     collect: bool = True,
+                     raw: bool = False,
+                     pipesize: int = 10):
+    """ Define an abstract loop to iterate a funtion for iterable
+
+    Example:
+    prepare parameters: scanning axes, dependences and other parameters
+    start experiment with special sequences according to the parameters
+    
+    Args:
+        function: give special sequences, parameters
+        iterable: iterated over to produce values that are fed to function as parameters.
+        dataset: zilabrad.pyle.datasaver.Dataset, object for data saving
+        collect: if True, collect the result into an array and return it; else, return an empty list
+        raw: discard swept_paras if raw == True
+    """
+    def run(paras):
+        # pass in all_paras to the function
+        all_paras = [Unit2SI(a) for a in paras[0]]
+        swept_paras = [Unit2num(a) for a in paras[1]]
+        result = function(None,all_paras) # 'None' is just the old devices arg which is not used now 
+        if raw:
+            result_raws = np.asarray(result)
+            return result_raws.T
+        else:
+            result = np.hstack([swept_paras,result])
+            return result
+
+    def wrapped():
+        for paras in iterable:
+            result = run(paras)
+            if _noisy_printData == True:
+                print(
+                    str(np.round(result,3))
+                    )
+            yield result
+    
+    # create qubitContext (singleton) 
+    qContext = qubitContext()
+    
+    results = dataset.capture(wrapped())
+        
+    result_list = []
+    for result in results:
+        result_list.append(result)
+    
+    qContext.clearTempParas()
+    
+    if collect:
+        return result_list
+
+
+
+def set_microwaveSource(freqList,powerList):
+    """set frequency and power for microwaveSource devices
+    """
+    # print(freqList[0],powerList[0])
+
+    qContext = qubitContext()
+    server = qContext.servers_microwave
+    IPdict = qContext.IPdict_microwave
+
+    for i,key in enumerate(IPdict):
+        server.select_device(IPdict[key])
+        server.output(True)
+        server.frequency(freqList[i]['MHz'])
+        server.amplitude(powerList[i]['dBm'])
+    return
+        
+
+
+def makeSequence_readout(qubits):
+    """
+    waveServer: zilabrad.instrument.waveforms
+    This version only, consider one zurich_qa device
+    FS: sampling rates
+    """
+    qContext = qubitContext()
+    qa = qContext.servers_qa['qa_1']
+
+    FS = qa.FS
+    waveServer = waveforms.waveServer(device_id='0')
+    
+    wave_readout_func = [waveforms.NOTHING,waveforms.NOTHING]
+    for q in qubits:
+        if 'do_readout' in q.keys():
+            if 'r' in q.keys(): 
+                wave_readout_func[0] += q.r[0]
+                wave_readout_func[1] += q.r[1]
+            else:
+                print('Error! No readout pulse!')
+    
+    
+    q_ref = qubits[0]
+    start = 0.
+    end = q_ref['readout_len']['s']
+    
+    waveServer.set_tlist(start=start,end=end,fs=FS)
+    wave_readout = [waveServer.func2array(wave_readout_func[i],start,end) for i in [0,1]]
+    return wave_readout
+
+
+def makeSequence_AWG(qubits):
+    """
+    waveServer: zilabrad.instrument.waveforms
+    FS: sampling rates
+    """
+    qContext = qubitContext()
+    hds = qContext.servers_hd
+    hd = hds['hd_1']
+    
+    FS = hd.FS
+
+    
+    wave_AWG = []
+    waveServer = waveforms.waveServer(device_id='0')
+    
+    ## This version consider all of the ports of AWG require the same sampling points
+
+
+    ### ----bias_start previously -----  XY,Z, pulse quantum getes... ------ readout ----- bias_end ---
+    q_ref = qubits[0]
+    start = -Unit2SI(q_ref['bias_start'])
+    end = Unit2SI(q_ref['bias_end']) + Unit2SI(q_ref['awgs_pulse_len']) + Unit2SI(q_ref['readout_len'])
+    
+    ## this is just set parameters, not really generate a list, which is slow
+    waveServer.set_tlist(start,end,fs=FS)
+    
+    for q in qubits: 
+        # the order must be 'dc,xy,z' ! match the order in QubitContext
+        
+        ## line [DC]
+        if 'dc' in q.keys():
+            wave_AWG += [waveServer.func2array(q.dc,start,end,FS)]
+            
+        ## line [xy] I,Q
+        if 'xy' in q.keys():
+            wave_AWG += [waveServer.func2array((q.xy)[i],start,end,FS) for i in [0,1]]
+            
+        ## line [z]
+        if 'z' in q.keys():
+            wave_AWG += [waveServer.func2array(q.z,start,end,FS)]
+            
+    return wave_AWG
 
 
 
@@ -119,196 +267,27 @@ def _mpAwg_init(qubits:list):
         raise Exception('Must set one readout frequency at least')
     qa.set_qubit_frequency(f_read) ##
 
-    ## initialize waveforms and building 
-    # qa.update_wave_length()
     ### ----- finish ----- ###
     return 
     
     
-def RunAllExperiment(function,iterable,dataset,
-                     collect: bool = True,
-                     raw: bool = False,
-                     pipesize: int = 10):
-    """ Define an abstract loop to iterate a funtion for iterable
-
-    Example:
-    prepare parameters: scanning axes, dependences and other parameters
-    start experiment with special sequences according to the parameters
-    
-    Args:
-        function: give special sequences, parameters, and start exp_devices, that are to be called by run()
-        iterable: iterated over to produce values that are fed to function as parameters.
-        dataset: zilabrad.pyle.datasaver.Dataset
-        collect: if True, collect the result into an array and return it; else, return an empty list
-        raw: discard swept_paras if raw == True
-    """
-    def run(paras):
-        # pass in all_paras to the function
-        all_paras = [Unit2SI(a) for a in paras[0]]
-        swept_paras = [Unit2num(a) for a in paras[1]]
-        result = function(None,all_paras) # 'None' is just the old devices arg which is not used now 
-        if raw:
-            result_raws = np.asarray(result)
-            return result_raws.T
-        else:
-            result = np.hstack([swept_paras,result])
-            return result
-
-    def wrapped():
-        for paras in iterable:
-            result = run(paras)
-            if _noisy_printData == True:
-                print(
-                    str(np.round(result,3))
-                    )
-            yield result
-            
-    results = dataset.capture(wrapped())
-        
-    result_list = []
-    for result in results:
-        result_list.append(result)
-    
-    if collect:
-        return result_list
-
-
-
-## qubit Mapping
-## Get specified parameters from dictionary (qubits)
-
-def getQubits_paras(qubits: dict, key: str):
-    return [_qubit[key] for _qubit in qubits]
-
-
-
-        
-def getQubits_awgPort(qubits):
-    """
-    Get the AWG ports for zurich HD according to whether the corresponding keys exist
-    Args: qubits, list of dictionary
-    Returns: ports (list): for example, [('dev8334', 1), ('dev8334', 2)]
-    
-    TODO: zurichHelper以适应多设备的格式改写了,ports格式也需要匹配;
-          比如现在需要用dev1的端口123,dev2的端口456,那么ports给的
-          值应该是{'dev1':[[1,2],[1],[],[]],'dev2':[[],[2],[1,2],[]]}.
-          ports字典应该只需要生成一次, 在初始化时调用, 也用于声明本次实验
-          涉及的设备, 其他连接的设备无需开启和初始化参数. 
-    """
-    ports = []
-    for q in qubits:
-        channels = dict(q['channels'])
-        if 'dc' in q.keys():
-            ports += [channels['dc']]
-        if 'xy' in q.keys():
-            ports += [channels['xy_I'],channels['xy_Q']]
-        if 'z' in q.keys():
-            ports += [channels['z']]
-    return ports
-    
-
-def set_microwaveSource(freqList,powerList):
-    """set frequency and power for microwaveSource devices
-    """
-    print(freqList[1]['MHz'],powerList[1]['dBm'])
-
-    # qContext = qubitContext()
-    # server = qContext.servers_microwave
-    # IPdict = qContext.IPdict_microwave
-
-    # for key,value in IPdict.items():
-    #     server.select_device(value)
-    #     server.output(True)
-    #     server.frequency(freqList[i]['MHz'])
-    #     server.amplitude(powerList[i]['dBm'])
-    return
-        
-
-
-def makeSequence_readout(qubits):
-    """
-    waveServer: zilabrad.instrument.waveforms
-    This version only, consider one zurich_qa device
-    FS: sampling rates
-    """
-    qContext = qubitContext()
-    qa = qContext.servers_qa['qa_1']
-
-    FS = qa.FS
-    waveServer = waveforms.waveServer(device_id='0')
-    
-    wave_readout_func = [waveforms.NOTHING,waveforms.NOTHING]
-    for q in qubits:
-        if 'do_readout' in q.keys():
-            if 'r' in q.keys(): 
-                wave_readout_func[0] += q.r[0]
-                wave_readout_func[1] += q.r[1]
-            else:
-                print('Error! No readout pulse!')
-    
-    ## this is just set parameters, not really generate a list, which is slow
-    q_ref = qubits[0]
-    start = 0.
-    end = q_ref['readout_len']['s']
-    waveServer.set_tlist(start=start,end=end,fs=FS)
-    wave_readout = [waveServer.func2array(wave_readout_func[i],start,end) for i in [0,1]]
-    return wave_readout
-
-
-def makeSequence_AWG(qubits):
-    """
-    waveServer: zilabrad.instrument.waveforms
-    FS: sampling rates
-    """
-    qContext = qubitContext()
-    hds = qContext.servers_hd
-    hd = hds['hd_1']
-    
-    FS = hd.FS
-
-    
-    wave_AWG = []
-    waveServer = waveforms.waveServer(device_id='0')
-    
-    ## This version consider all of the ports of AWG require the same sampling points
-
-
-    ### ----bias_start previously -----  XY,Z, pulse quantum getes... ------ readout ----- bias_end ---
-    q_ref = qubits[0]
-    start = -Unit2SI(q_ref['bias_start'])
-    end = Unit2SI(q_ref['bias_end']) + Unit2SI(q_ref['experiment_length']) + Unit2SI(q_ref['awgs_pulse_len']) + Unit2SI(q_ref['readout_len'])
-    
-    ## this is just set parameters, not really generate a list, which is slow
-    waveServer.set_tlist(start,end,fs=FS)
-    
-    for q in qubits: 
-        ## line [DC]
-        if 'dc' in q.keys():
-            wave_AWG += [waveServer.func2array(q.dc,start,end,FS)]
-            
-        ## line [xy] I,Q
-        if 'xy' in q.keys():
-            wave_AWG += [waveServer.func2array((q.xy)[i],start,end,FS) for i in [0,1]]
-            
-        ## line [z]
-        if 'z' in q.keys():
-            wave_AWG += [waveServer.func2array(q.z,start,end,FS)]
-            
-    return wave_AWG
-
 def setupDevices(qubits):
+    q_ref = qubits[0]
+    
     qContext = qubitContext()
     qa = qContext.servers_qa['qa_1']
 
-    q_ref = qubits[0]
-    
     # initialization
     qa.set_adc_trig_delay(q_ref['bias_start'][s]+q_ref['experiment_length'])
     
-    if 'do_init' not in qubits[0].keys():
+    if 'do_init' not in q_ref.keys():
         _mpAwg_init(qubits)
         qubits[0]['do_init']=True
         logging.info('do_init')
+    ## Temp
+    qa.set_qubit_frequency([qb.demod_freq for qb in qubits])
+    return
+
 
 def runDevices(qubits,wave_AWG,wave_readout):
     qContext = qubitContext()
@@ -318,17 +297,17 @@ def runDevices(qubits,wave_AWG,wave_readout):
 
     # hd = hd['1']
     
-    t0=time.time()
-    qubits_port = getQubits_awgPort(qubits)
-    wave_dict = getQubits_awgWave_dict(ports=qubits_port,waves=wave_AWG)
-    print('wave_dict use %.3f s'%(time.time()-t0))
+    # t0=time.time()
+    qubits_port = qContext.getPorts(qubits)
+    wave_dict = awgWave_dict(ports=qubits_port,waves=wave_AWG)
+    # print('wave_dict use %.3f s'%(time.time()-t0))
 
     ## send data packet to multiply devices
-    t0=time.time()
+    # t0=time.time()
     qa.send_waveform(waveform=wave_readout)
-    print('qa.send_waveform use %.3f s'%(time.time()-t0))
+    # print('qa.send_waveform use %.3f s'%(time.time()-t0))
 
-    t0=time.time()
+    # t0=time.time()
     for dev_id,waveforms in wave_dict.items():
         for awg in range(4): ## default 4 awgs in every zi hdawgs
             port = [p for p in waveforms[awg].keys()]
@@ -343,7 +322,7 @@ def runDevices(qubits,wave_AWG,wave_readout):
                 print('Too many port: %r'%port)
             # else:
             #     pass ## empty case should not send
-    print('hds.send_waveform use %.3f s'%(time.time()-t0))
+    # print('hds.send_waveform use %.3f s'%(time.time()-t0))
 
     ## start to run experiment
     for name,hd in hds.items():
@@ -352,17 +331,16 @@ def runDevices(qubits,wave_AWG,wave_readout):
         for k in range(4):
             if len(wave_dict[name][k])!=0:
                 hd.awg_open(awgs_index=[k])
-    qa.awg_open()
-    ## download experimental data
-    t0=time.time()
+    qa.awg_open()## download experimental data
+    # t0=time.time()
     data = qa.get_data()
-    print('get_data use %.3f s'%(time.time()-t0))
+    # print('get_data use %.3f s'%(time.time()-t0))
     return data
 
 
-def getQubits_awgWave_dict(ports,waves):
+def awgWave_dict(ports,waves):
     """ Rewrite waveform sequence and port as dictionary, 
-        follow device name to sort. Hold empty dict if not
+        follow device name to sort. Hold empty dict if no
         wave in device's port. 
 
         Return:
@@ -387,28 +365,34 @@ def runQubits(qubits,exp_devices = None):
     Args:
         qubits (list): a list of dictionary
         _runQ_servers (list/tuple): instances used to control device
-    
-    Time Cost:
-        0.3 s : prepare waveform in local PC
-        0.2 s : setupDevices
-        0.8 s : runDevices and get data
+
     TODO:
-        (1) check _is_runfirst=True? Need run '_mpAwg_init' at first running;
-        (2) clear q.xy/z/dc and their array after send();
+    - clear q.xy/z/dc and their array after send();
     """
     # prepare wave packets
-    time0 = time.time()
+    # time0 = time.time()
     wave_AWG = makeSequence_AWG(qubits)
     wave_readout = makeSequence_readout(qubits)
-    print('wavePrepare use %.3f s'%(time.time()-time0))
-    # q_ref = qubits[0]
+    # print('wavePrepare use %.3f s'%(time.time()-time0))
+    
+    q_ref = qubits[0]
     # ## Now it is only two microwave sources, in the future, it should be modified
-    # set_microwaveSource(freqList = [q_ref['xy_mw_fc'],q_ref['readout_mw_fc']],
-    #                     powerList = [q_ref['xy_mw_power'],q_ref['readout_mw_power']])
-    time0 = time.time()
-    setupDevices(qubits)    
-    print('setupDevices use %.3f s'%(time.time()-time0))
+    set_microwaveSource(freqList = [q_ref['readout_mw_fc'],q_ref['xy_mw_fc']],
+                        powerList = [q_ref['readout_mw_power'],q_ref['xy_mw_power']])
+    
+    
+    
+    # only run once in the whole experimental loop
+    if 'isNewExpStart' not in q_ref:
+        print('isNewExpStart, setupDevices')
+        setupDevices(qubits)
+        q_ref['isNewExpStart'] = False # actually it can be arbitrary value        
+        
+    # print('setupDevices use %.3f s'%(time.time()-time0))
+
     ## run AWG and reaout devices and get data
+    # time0 = time.time()
     data = runDevices(qubits,wave_AWG,wave_readout)
+    # print('get data use %.3f s'%(time.time()-time0))
     return data
 
