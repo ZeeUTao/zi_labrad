@@ -4,25 +4,17 @@ Simple python3 interface for running bash commands
 """
 
 import os
-from abc import ABC
-from functools import wraps
-import sys
 
 
 _glob_paras = {"script_dir":r"M:\labrad_server"}
+_glob_paras["old_getcwd"] = os.getcwd()
 
+os.chdir(_glob_paras["script_dir"])
 
-def singletonMany(class_):
-    class SingletonFactory(ABC):
-        instance = {}
-        def __new__(cls,idx,*args, **kwargs):
-            if idx not in cls.instance:
-                cls.instance[idx] = class_(idx,*args, **kwargs)
-            return cls.instance
-    SingletonFactory.register(class_)
-    return SingletonFactory
+def cd_oldDir():
+    os.chdir(_glob_paras["old_getcwd"])
     
-
+    
 class Servers(object):
     """
     servers factory, every server is singleton
@@ -105,12 +97,17 @@ class Servers(object):
 def start_cmd_command(command):
     os.system(r"start cmd /k %s"%(command))
 
-def start_cmd_ipython3(path,dir = None):
+def start_cmd_ipython3(path,dir = None):    
     if dir == None:
-        path = os.path.join(_glob_paras['script_dir'],path) 
+        path = os.path.join(_glob_paras['script_dir'],path)
+    
     def func():
         commands = r"start cmd /k ipython3 %s"%(path)
+        print(commands)
+        # if you have more than one versions of ipython3, and you want to specify ones, 
+        # you need to modify {ipython3} to the located path that you want to specify
         os.system(commands)
+        
     return func
     
 def start_labrad(
@@ -161,10 +158,10 @@ def choose_server():
 
 
 def helper():
-    print("="*30)
+    print("="*40)
     words = "This is server_start bash by Ziyu Tao"
     print(words)
-    print("="*30)
+    print("="*40)
     
     
     helpwords = "Present Directory for running scripts is %s "%_glob_paras["script_dir"]
@@ -180,7 +177,14 @@ def helper():
         print(f"Empty input or Invalid Directory, %s"%(newDir))
         print("Present Directory for running scripts is %s "%_glob_paras["script_dir"])
         return 
+
+def start_all(serverDict):
+    for key in serverDict.keys():
+        serverDict[key].run()
+        if serverDict[key].name == 'scalabrad':
+            os.system("TIMEOUT /T 7")
     
+        
 def main():
     server = add_servers()
     serverDict = dict(server.all)
@@ -207,8 +211,8 @@ def main():
             helper()
             
         elif choice == 'a':
-            for key in serverDict.keys():
-                server[key].run()
+            start_all(serverDict)
+                    
            
         elif choice in serverDict.keys():
             server[choice].run()
@@ -221,3 +225,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    cd_oldDir()
