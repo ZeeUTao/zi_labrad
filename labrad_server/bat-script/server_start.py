@@ -17,41 +17,22 @@ def cd_oldDir():
     
 class Servers(object):
     """
-    servers factory, every server is singleton
-
-        
-    Example: 
+    Example
     >>> server = Servers(idx=1,name='1',func='1')
     >>> Servers(idx=2,name='2',func='2')
     >>> Servers(idx=2,name='2',func='2')
     
-    >>> server.all
-    {name1 : obj1, name2 : obj2, name3 : obj3}
-    >>> server().idx
-    1
-    >>> server.select(2).idx
-    2
-    >>> server().idx
-    2
     >>> server[1].idx,server[2].idx,server[3].idx
     (1, 2, 3)
     """
     
     _instance = {}
-    _default_idx = 1
-    
     def __new__(cls, *args, **kwargs):
-        """
-        if no specified idx, idx = 0
-        """
-        _default_idx = cls._default_idx
         if "idx" in kwargs:
             idx = kwargs["idx"]
-        elif len(args)>0:
-            idx = args[0]
         else:
-            idx = _default_idx
-        
+            idx = args.pop(0)
+            
         # if instance with the same idx exist, do not create again
         if idx in cls._instance:
             return cls._instance[idx]
@@ -64,26 +45,10 @@ class Servers(object):
         self.idx = idx
         self.name = name
         self.func = func
-    
-    @staticmethod
-    def default_obj():
-        return _instance[_default_idx]
-        
-    def __call__(self):
-        cls = self.__class__
-        return cls._instance[cls._default_idx]
-        
+
     def __getitem__(self, key):
         return self.__class__._instance[key]
 
-
-    def select(self,idx=None):
-        if idx != None:
-            self.__class__._default_idx = idx
-            return self[idx]
-        else:
-            return self.__call__()
-    
     @property
     def all(self):
         return self.__class__._instance
@@ -94,28 +59,27 @@ class Servers(object):
 
 
 
-def start_cmd_command(command):
-    os.system(r"start cmd /k %s"%(command))
-
-def start_cmd_ipython3(path,dir = None):    
-    if dir == None:
-        path = os.path.join(_glob_paras['script_dir'],path)
-    
-    def func():
-        commands = r"start cmd /k ipython3 %s"%(path)
-        print(commands)
-        # if you have more than one versions of ipython3, and you want to specify ones, 
-        # you need to modify {ipython3} to the located path that you want to specify
-        os.system(commands)
-        
-    return func
-    
-def start_labrad(
-    path = r"M:\scalabrad-0.8.3\bin\labrad",
-    registryFile = r"file:///M:/Registry?format=delphi"):
-    start_cmd_command("%s --registry %s"%(path,registryFile))
-
 def add_servers():
+    def start_cmd_command(command):
+        os.system(r"start cmd /k %s"%(command))
+
+    def start_cmd_ipython3(path,dir = None):    
+        if dir == None:
+            path = os.path.join(_glob_paras['script_dir'],path)
+        
+        def func():
+            commands = r"start cmd /k ipython3 %s"%(path)
+            # if you have more than one versions of ipython3, and you want to specify ones, 
+            # you need to modify {ipython3} to the located path that you want to specify
+            os.system(commands)
+            
+        return func
+        
+    def start_labrad(
+        path = r"M:\scalabrad-0.8.3\bin\labrad",
+        registryFile = r"file:///M:/Registry?format=delphi"):
+        start_cmd_command("%s --registry %s"%(path,registryFile))
+        
     # add servers    
     server = Servers(idx=1,
         name='scalabrad',
@@ -139,24 +103,26 @@ def add_servers():
     return server
 
 
+def start_all(serverDict):
+    for key in serverDict.keys():
+        serverDict[key].run()
+        if serverDict[key].name == 'scalabrad':
+            os.system("TIMEOUT /T 7")
+
+def start_choices(serverDict,choices):		
+    for key in choices:
+        serverDict[key].run()
+        if serverDict[key].name == 'scalabrad':
+            os.system("TIMEOUT /T 7")
+
+
+
 def dict2prettyWords(serverDict):
     words = ""
     for key,ser in serverDict.items():
         words += f"\n{key} {ser.name}"
     return words
     
-def choose_server():
-    arg = input("Input the index and press 'Enter' to start server \n")
-    try:
-        choose = eval(arg)
-    except: choose = arg
-    
-    print("You choose %s \n"%(choose))
-    return choose
-
-
-
-
 def helper():
     print("="*40)
     words = "This is server_start bash by Ziyu Tao"
@@ -178,13 +144,15 @@ def helper():
         print("Present Directory for running scripts is %s "%_glob_paras["script_dir"])
         return 
 
-def start_all(serverDict):
-    for key in serverDict.keys():
-        serverDict[key].run()
-        if serverDict[key].name == 'scalabrad':
-            os.system("TIMEOUT /T 7")
+def choose_server():
+    arg = input("Input the index and press 'Enter' to start server \n")
+    try:
+        choose = eval(arg)
+    except: choose = arg
     
-        
+    print("You choose %s \n"%(choose))
+    return choose
+    
 def main():
     server = add_servers()
     serverDict = dict(server.all)
@@ -212,10 +180,9 @@ def main():
             
         elif choice == 'a':
             start_all(serverDict)
-                    
            
         elif choice in serverDict.keys():
-            server[choice].run()
+            start_choices(serverDict,[choice])
         else:
             print('Invalid input %s '%(choice))
 
