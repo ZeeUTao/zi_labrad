@@ -9,7 +9,7 @@ import os
 _glob_paras = {"script_dir":r"M:\labrad_server"}
 _glob_paras["old_getcwd"] = os.getcwd()
 
-os.chdir(_glob_paras["script_dir"])
+
 
 def cd_oldDir():
     os.chdir(_glob_paras["old_getcwd"])
@@ -191,5 +191,6 @@ def main():
 # seefiles = sorted((fn for fn in os.listdir(r"M:/xxx") if fn.endswith('.py')))
 
 if __name__ == '__main__':
+    os.chdir(_glob_paras["script_dir"])
     main()
     cd_oldDir()
