@@ -255,17 +255,7 @@ def _mpAwg_init(qubits:list):
 
     q_ref = qubits[0] ## the first qubit as master
 
-    qa.set_result_samples(qubits[0]['stats'])  ## int: sample number for one sweep point
-    qa.set_readout_delay(q_ref['readout_delay'])
-    qa.set_pulse_length(q_ref['readout_len'])
 
-    f_read = []
-    for qb in qubits:
-        if qb['do_readout']: ##in _q.keys():
-            f_read += [qb.demod_freq]
-    if len(f_read) == 0:
-        raise Exception('Must set one readout frequency at least')
-    qa.set_qubit_frequency(f_read) ##
 
     ### ----- finish ----- ###
     return 
@@ -273,19 +263,43 @@ def _mpAwg_init(qubits:list):
     
 def setupDevices(qubits):
     q_ref = qubits[0]
-    
+    # only run once in the whole experimental loop
     qContext = qubitContext()
     qa = qContext.servers_qa['qa_1']
-
-    # initialization
-    qa.set_adc_trig_delay(q_ref['bias_start'][s]+q_ref['experiment_length'])
     
-    if 'do_init' not in q_ref.keys():
+    if 'isNewExpStart' not in q_ref:
+        print('isNewExpStart, setupDevices')
         _mpAwg_init(qubits)
-        qubits[0]['do_init']=True
-        logging.info('do_init')
-    ## Temp
-    qa.set_qubit_frequency([qb.demod_freq for qb in qubits])
+        
+        ## int: sample number for one sweep point
+        qa.set_result_samples(qubits[0]['stats'])
+        
+        ## only related with wiring and devices, delay between QA signal output and demodulation    
+        qa.set_readout_delay(q_ref['readout_delay'])
+        
+        ## set qa pulse length in AWGs, and set same length for demodulate.
+        qa.set_pulse_length(q_ref['readout_len'])
+
+        ## delay between zurich HD and QA
+        qa.set_adc_trig_delay(q_ref['bias_start'][s]+q_ref['experiment_length']) 
+        
+        
+        ## set demodulate frequency for qubits if you need readout the qubit
+        f_read = []
+        for qb in qubits:
+            if qb['do_readout']: ##in _q.keys():
+                f_read += [qb.demod_freq]
+        if len(f_read) == 0:
+            raise Exception('Must set one readout frequency at least')
+        qa.set_qubit_frequency(f_read) ##
+        
+
+        q_ref['isNewExpStart'] = False # actually it can be arbitrary value
+        
+    else:
+        ## delay between zurich HD and QA
+        ## for example: in T1 measurement
+        qa.set_adc_trig_delay(q_ref['bias_start'][s]+q_ref['experiment_length'])
     return
 
 
@@ -382,12 +396,7 @@ def runQubits(qubits,exp_devices = None):
     
     
     
-    # only run once in the whole experimental loop
-    if 'isNewExpStart' not in q_ref:
-        print('isNewExpStart, setupDevices')
-        setupDevices(qubits)
-        q_ref['isNewExpStart'] = False # actually it can be arbitrary value        
-        
+    setupDevices(qubits)
     # print('setupDevices use %.3f s'%(time.time()-time0))
 
     ## run AWG and reaout devices and get data
