@@ -376,7 +376,7 @@ def plotIQraw(dh,idx,dv=None,level=2):
     plt.legend()
     plot_label('I','Q')
 
-def fitRamsey(dh,idx,fingefreq=0.002,sign=0,T1=13306,trange=[0,2],debug=False, fig=None, pro_idx=-1):
+def fitRamsey(dh,idx,dv=None,fingefreq=0.002,sign=0,T1=13306,trange=[0,2],debug=False,pro_idx=-1):
     '''gaussian-fit of dephasing time; input T1 in nanoseconds'''
     data = dh.getDataset(idx,dv)
     
@@ -391,16 +391,16 @@ def fitRamsey(dh,idx,fingefreq=0.002,sign=0,T1=13306,trange=[0,2],debug=False, f
     probEnv = np.sqrt(prob**2+hprob**2)
     
     def fitfunc(p,t):
-        return p[0]*exp(-t/T1/2.-t**2/p[1]**2)
+        return p[0]*np.exp(-t/T1/2.-t**2/p[1]**2)
         # return p[0]*exp(-t/p[1])
     def errfunc(p):
         return probEnv-fitfunc(p,t)
-    out = leastsq(errfunc,array([max(probEnv)-min(probEnv),t[-1]/3.0]),full_output=1)
+    out = leastsq(errfunc,np.array([max(probEnv)-min(probEnv),t[-1]/3.0]),full_output=1)
     p = out[0]
 
     t1 = data[:,0]*1000
     prob1 = data[:,pro_idx] - mid
-    plt.figure(fig)
+
     plt.plot(t1/1000.,prob1+mid,'bo-')
     xs = np.linspace(t1[0],t1[-1],1000)
     plt.plot(xs/1000.,fitfunc(p,xs)+mid,'k',linewidth=2)
@@ -413,7 +413,25 @@ def fitRamsey(dh,idx,fingefreq=0.002,sign=0,T1=13306,trange=[0,2],debug=False, f
     plt.ylim(0,1)
  
     return p[1]
-    
+
+def RamseyFFT(dh,idx, dv=None):
+    '''FFT to ramsey data'''
+    data = dh.getDataset(idx,dv)
+    ts = data[:,0]
+    ps = data[:,-1]
+    ps = ps - np.mean(ps)
+    freq = np.fft.fftfreq(len(ts), ts[1]-ts[0])
+    fourier = abs(np.fft.fft(ps, len(ts)))
+
+    fm = freq[np.where(fourier==np.max(fourier))][0]
+    plt.plot(freq, fourier, '.-')
+    plt.xlabel('freq (MHz)', size=20)
+    plt.ylabel('fft',size=20)
+    plt.xticks(size=20)
+    plt.yticks(size=20)
+    plt.subplots_adjust(bottom=0.15,left=0.15)
+    return fm
+        
 # if __name__=="__main__":
 #     dh = datahelp()
 #     cxn,dv,ss = _connect_labrad()

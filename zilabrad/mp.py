@@ -793,11 +793,11 @@ def ramsey(sample,measure=0,stats=1024,delay=ar[0:10:0.4,us],
         q.z = waveforms.square(amp=q.zpa[V],start=start,length=delay+2*q.piLen[s]+100e-9)
         start += 50e-9
         q.xy = XYnothing(q)
-        addXYgate(q,start,theta=np.pi/2.,phi=0.)
+        addXYgate(q,start,theta=np.pi/2.,phi=0.+start*(q['f10']['Hz'])*2.*np.pi)
         
-        start += delay + q.piLen[s]
+        start += delay + q.piLen['s']
         
-        addXYgate(q,start,theta=np.pi/2.,phi=0.)
+        addXYgate(q,start,theta=np.pi/2.,phi=PHASE+fringeFreq*delay*2.*np.pi+start*(q['f10']['Hz'])*2.*np.pi)
         
         start += q.piLen[s] + 50e-9
 
