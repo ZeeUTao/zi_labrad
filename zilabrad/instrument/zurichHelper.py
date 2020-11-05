@@ -589,7 +589,7 @@ class zurich_hd:
         awgModule.execute()
         awgModule.set('awgModule/compiler/sourcestring', awg_program)
         while awgModule.getInt('awgModule/compiler/status') == -1:
-            time.sleep(0.01)
+            time.sleep(0.1)
         # Ensure that compilation was successful
         if awgModule.getInt('awgModule/compiler/status') == 1:
             # compilation failed, raise an exception
@@ -603,7 +603,7 @@ class zurich_hd:
             # wait for waveform upload to finish
             i = 0
             while awgModule.getDouble('awgModule/progress') < 1.0:
-                time.sleep(0.01)
+                time.sleep(0.1)
                 i += 1
         if self.noisy:
             print('\n AWG upload successful. Output enabled. AWG Standby. \n')
