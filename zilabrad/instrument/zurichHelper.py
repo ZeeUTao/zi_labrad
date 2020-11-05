@@ -396,11 +396,15 @@ class zurich_qa(object):
             for p in paths:
                 if p not in dataset:
                     continue
-                for v in dataset[p]:
-                    chunks[p].append(v['vector'])
-                    num_obtained = sum([len(x) for x in chunks[p]])
-                    if num_obtained >= num_samples:
-                        gotem[p] = True
+                chunks[p] = list(map(lambda v: v['vector'],dataset[p]))
+                num_obtained = sum([len(x) for x in chunks[p]])
+                if num_obtained >= num_samples:
+                    gotem[p] = True
+                # for v in dataset[p]:
+                    # chunks[p].append(v['vector'])
+                    # num_obtained = sum([len(x) for x in chunks[p]])
+                    # if num_obtained >= num_samples:
+                        # gotem[p] = True
             time += poll_length
     
         if not all(gotem.values()):
