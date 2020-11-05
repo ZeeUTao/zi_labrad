@@ -199,11 +199,13 @@ def s21_scan_rot(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phi=0,
         q['demod_freq'] = q['readout_freq']['Hz']-q['readout_mw_fc']['Hz']
     else:
         q['demod_freq'] = sb_freq['Hz']
+
     q.awgs_pulse_len += np.max(delay) ## add max length of hd waveforms 
 
     ## set some parameters name;
     axes = [(bias,'bias'),(zpa,'zpa'),(power,'power'),(amp,'amp'),(freq,'freq'),(sb_freq,'sb_freq'),(mw_power,'mw_power'),
             (delay,'delay'),(phi,'phi (deg)'),(phase,'weight phase')]
+
     deps = [('Amplitude','s21 for','a.u.'),('Phase','s21 for','rad'),
                 ('I','',''),('Q','','')]
     kw = {'stats': stats}
@@ -226,6 +228,7 @@ def s21_scan_rot(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phi=0,
             q['readout_amp'] = power*dBm
         else:
             q['readout_amp'] = amp2power(amp)*dBm
+
         
         q['readout_mw_fc'] = (freq - q['demod_freq'])*Hz
 
@@ -239,6 +242,7 @@ def s21_scan_rot(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phi=0,
 
         q['experiment_length'] = start
         q['do_readout'] = True
+
 
         # q.r = [waveforms.square(amp=power2amp(q['readout_amp']['dBm']),start=0,length=q['readout_len']),
         #        waveforms.square(amp=power2amp(q['readout_amp']['dBm']),start=0,length=q['readout_len'])]
@@ -307,7 +311,6 @@ def s21_scan_rot(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phi=0,
     if back:
         return result_list
         
-
 
 @expfunc_decorator
 def s21_scan_Nq(sample,measure=[0,1],stats=1024,freq=6.0*GHz,delay=0*ns,phase=0,
@@ -590,7 +593,6 @@ def s21_scan_sb(sample,measure=0,stats=1024,demod_freq=100*MHz,freq=6.0*GHz,dela
     if mw_power == None:
         mw_power = q['readout_mw_power']
     q.awgs_pulse_len += np.max(delay) ## add max length of hd waveforms 
-
     ## set some parameters name;
     axes = [(freq,'freq'),(bias,'bias'),(zpa,'zpa'),(power,'power'),(demod_freq,'demod_freq'),(sb_freq,'sb_freq'),(mw_power,'mw_power'),
             (delay,'delay'),(phase,'phase')]
@@ -600,6 +602,7 @@ def s21_scan_sb(sample,measure=0,stats=1024,demod_freq=100*MHz,freq=6.0*GHz,dela
 
     # create dataset
     dataset = sweeps.prepDataset(sample, name+des, axes, deps,measure=measure,kw=kw)
+
 
     def runSweeper(devices,para_list):
         freq,bias,zpa,power,demod_freq,sb_freq,mw_power,delay,phase = para_list
@@ -932,6 +935,7 @@ def measureFidelity(sample,rep=10,measure=0,stats=1024,update=False,analyze=Fals
 
         ## start to run experiment
         data1 = runQ(qubits,devices)
+
 
         ## no pi pulse --> |0> ##
         q.xy = [waveforms.square(amp=0),waveforms.square(amp=0)]
