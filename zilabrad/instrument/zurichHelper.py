@@ -414,12 +414,7 @@ class zurich_qa(object):
 
     def get_data(self):
         data = self.acquisition_poll(self.daq, self.paths, self.result_samples, timeout=10)
-        val = []
-        # chan = 0
-        for path, samples in data.items():
-            val.append(samples)
-            # chan += 1
-        return val
+        return list(data.values())
 
 
 
