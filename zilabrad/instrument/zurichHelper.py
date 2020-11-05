@@ -316,24 +316,28 @@ class zurich_qa(object):
     ####--set qa demodulation frequency (qubit sideband part)--####
     def set_qubit_frequency(self, frequency_list):
         # set integration weights, and result paths
-        self.qubit_frequency = np.asarray(frequency_list)
+        self.qubit_frequency = frequency_list
         self.set_all_integration() ## set integration weights
         self.set_subscribe() ## set result paths
-        
-        w_index = np.arange(0, self.integration_length , 1)
-        
-        for channel,freq in enumerate(self.qubit_frequency):
-            # assign real and image integration coefficient 
-            # integration settings for one I/Q pair
-            self.daq.setDouble('/{:s}/qas/0/integration/length'.format(self.id), self.integration_length)
-            
-            w_real = np.cos(w_index/1.8e9*qubit_frequency*2.*np.pi)
-            w_imag = np.sin(w_index/1.8e9*qubit_frequency*2.*np.pi)
 
-            self.daq.setVector('/{:s}/qas/0/integration/weights/{}/real'.format(self.id, channel), w_real)
-            self.daq.setVector('/{:s}/qas/0/integration/weights/{}/imag'.format(self.id, channel), w_imag)
-            # set signal input mapping for QA channel : 0 -> 1 real, 2 imag
-            self.daq.setInt('/{:s}/qas/0/integration/sources/{:d}'.format(self.id, channel), 0)
+    def set_all_integration(self):
+        for i in range(len(self.qubit_frequency)):
+            self.set_qubit_integration_I_Q(i,self.qubit_frequency[i])
+
+    def set_qubit_integration_I_Q(self, channel, qubit_frequency): 
+        # assign real and image integration coefficient 
+        # integration settings for one I/Q pair
+        from numpy import pi
+        self.daq.setDouble('/{:s}/qas/0/integration/length'.format(self.id), self.integration_length)
+        w_index      = np.arange(0, self.integration_length , 1)
+        weights_real = np.cos(w_index/1.8e9*qubit_frequency*2*pi)
+        weights_imag = np.sin(w_index/1.8e9*qubit_frequency*2*pi)
+        w_real = np.array(weights_real)
+        w_imag = np.array(weights_imag)
+        self.daq.setVector('/{:s}/qas/0/integration/weights/{}/real'.format(self.id, channel), w_real)
+        self.daq.setVector('/{:s}/qas/0/integration/weights/{}/imag'.format(self.id, channel), w_imag)
+        # set signal input mapping for QA channel : 0 -> 1 real, 2 imag
+        self.daq.setInt('/{:s}/qas/0/integration/sources/{:d}'.format(self.id, channel), 0)
 
 
     ####--readout result part--####
@@ -374,7 +378,7 @@ class zurich_qa(object):
         """
         if self.noisy:
             print('acquisition_poll')
-        poll_length = 0.02  # s
+        poll_length = 0.01  # s
         poll_timeout = 100  # ms
         poll_flags = 0
         poll_return_flat_dict = True
@@ -393,7 +397,7 @@ class zurich_qa(object):
                 if p not in dataset:
                     continue
                 chunks[p] = list(map(lambda v: v['vector'],dataset[p]))
-                num_obtained = sum(map(len,chunks[p])) #sum([len(x) for x in chunks[p]])
+                num_obtained = sum([len(x) for x in chunks[p]])
                 if num_obtained >= num_samples:
                     gotem[p] = True
                 # for v in dataset[p]:
@@ -405,7 +409,7 @@ class zurich_qa(object):
     
         if not all(gotem.values()):
             for p in paths:
-                num_obtained = sum(map(len,chunks[p])) #sum([len(x) for x in chunks[p]])
+                num_obtained = sum([len(x) for x in chunks[p]])
                 print('Path {}: Got {} of {} samples'.format(p, num_obtained, num_samples))
             raise Exception('Timeout Error: Did not get all results within {:.1f} s!'.format(timeout))
     
