@@ -130,14 +130,14 @@ def RunAllExperiment(function,iterable,dataset,
     
     results = dataset.capture(wrapped())
         
-    result_list = []
-    for result in results:
-        result_list.append(result)
+    resultArray = np.asarray(list(results))
+    # for result in results:
+    #     result_list.append(result)
     
     qContext.clearTempParas()
     
     if collect:
-        return result_list
+        return resultArray
 
 
 
@@ -173,7 +173,7 @@ def makeSequence_readout(qubits):
     
     wave_readout_func = [waveforms.NOTHING,waveforms.NOTHING]
     for q in qubits:
-        if 'do_readout' in q.keys():
+        if q.get('do_readout'):
             if 'r' in q.keys(): 
                 wave_readout_func[0] += q.r[0]
                 wave_readout_func[1] += q.r[1]
@@ -287,7 +287,7 @@ def setupDevices(qubits):
         ## set demodulate frequency for qubits if you need readout the qubit
         f_read = []
         for qb in qubits:
-            if qb['do_readout']: ##in _q.keys():
+            if qb.get('do_readout'): ##in _q.keys():
                 f_read += [qb.demod_freq]
         if len(f_read) == 0:
             raise Exception('Must set one readout frequency at least')
@@ -361,14 +361,14 @@ def awgWave_dict(ports,waves):
             port_dict = {'dev.id':[{port1:wave1,port2:wave2},{..},{..},{..}]}
     """
     port_dict = {}
-    for k in range(len(waves)):
+    for k,wave in enumerate(waves):
         dev_name = ports[k][0]
         awg_index = (ports[k][1]+1) // 2 -1 ## awg_index: (1~8)-->(0,1,2,3)
         p_idx =  (ports[k][1]+1) % 2 +1   ## port: (1~8) --> (1,2)
 
         if dev_name not in port_dict.keys():
             port_dict[dev_name] = [{},{},{},{}]
-        port_dict[dev_name][awg_index][p_idx] = waves[k]
+        port_dict[dev_name][awg_index][p_idx] = wave
 
     return port_dict
 
