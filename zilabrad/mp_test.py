@@ -27,7 +27,9 @@ from zilabrad.instrument.qubitServer import RunAllExperiment as RunAllExp
 from zilabrad.instrument.QubitContext import loadQubits,qubitContext
 from zilabrad.instrument.qubitServer import runQubits as runQ
 
-
+# from conf import loadInfo
+# from conf import qa,hd,mw,mw_r
+# qa,hd,mw,mw_r are objects (instance)
 
 import zilabrad.plots.adjuster
 import zilabrad.instrument.waveforms as waveforms
@@ -127,7 +129,7 @@ def expfunc_decorator(func):
 
         start_ts = time.time()
         result = func(*args, **kwargs)
-        # stop_device() ## stop all device running
+        stop_device() ## stop all device running
         logger.info('use time (s): %.2f '%(time.time()-_t0_))
         return result
     return wrapper
@@ -822,6 +824,56 @@ def rabihigh(sample,measure=0,stats=1024,piamp=0.05,df=0*MHz,
     return
 
 
+@expfunc_decorator
+def s21_SNR(sample,measure=0,stats=1024,reps=1,
+    name='s21_SNR',des='',back=True):
+    sample, qubits, Qubits = loadQubits(sample, write_access=True)
+    q = qubits[measure]
+    Qb = Qubits[measure]
+    q.channels = dict(q['channels'])
+
+    for qb in qubits:
+        qb.demod_freq = qb['readout_freq'][Hz]-qb['readout_mw_fc'][Hz]
+
+    q.sb_freq = (q['f10'] - q['xy_mw_fc'])[Hz]
+
+    ## set some parameters name;
+    axes = [(reps,'reps')]
+    deps = []
+    for name in ['mean(abs(data))','std(abs(data))','SNR']:
+        deps.append((name,'',''))
+    kw = {'stats': stats}
+
+    # create dataset
+    dataset = sweeps.prepDataset(sample,name+des,axes,deps,kw=kw,measure=measure)
+
+    def runSweeper(devices,para_list):
+        # reps = para_list[0]
+        ## with pi pulse --> |1> ##
+        start = 0
+        q['experiment_length'] = start
+        
+        for qb in qubits:
+            qb['experiment_length'] = start
+            qb['do_readout'] = True
+            qb.r = readoutPulse(q)
+
+
+        data0 = runQ(qubits,devices)
+        data = data0[measure]
+
+        amp_mean = np.mean(np.abs(data))
+        amp_std = np.std(np.abs(data))
+        SNR = amp_std/amp_mean
+        return [amp_mean,amp_std,SNR]
+
+
+    collect,raw = True,False
+    axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
+
+    result_list = RunAllExp(runSweeper,axes_scans,dataset,collect,raw)
+    data = np.asarray(result_list)
+    return data
 
 @expfunc_decorator
 def IQraw(sample,measure=0,stats=1024,update=False,analyze=False,reps=1,
@@ -872,6 +924,7 @@ def IQraw(sample,measure=0,stats=1024,update=False,analyze=False,reps=1,
         q.xy = [waveforms.square(amp=0),waveforms.square(amp=0)]
         ## start to run experiment
         data0 = runQ(qubits,devices)
+
         # print(data0[0].shape)
         ## analyze data and return
         Is0 = np.real(data0[measure])
@@ -883,6 +936,12 @@ def IQraw(sample,measure=0,stats=1024,update=False,analyze=False,reps=1,
         # print('|1>:',abs(np.mean(data1[measure]))/power2amp(q['readout_amp']['dBm']))
 
         result = [Is0,Qs0,Is1,Qs1]
+        # result = [
+        #     np.mean(Is0),
+        #     np.mean(Qs0),
+        #     np.mean(Is1),
+        #     np.mean(Qs1)]
+        print(result)
         return result
 
 
@@ -1221,6 +1280,11 @@ def s21_dispersiveShift(sample,measure=0,stats=1024,freq=ar[6.4:6.5:0.02,GHz],de
         ## start to run experiment
         data0 = runQ([q],devices)
 
+        plt.scatter(np.real(data0[0]),np.imag(data0[0]),c='b')
+        plt.scatter(np.real(data1[0]),np.imag(data1[0]),c='r')
+        plt.xlim(-7,10)
+        plt.ylim(-9,5)
+        plt.show()
         ## analyze data and return
         for _d_ in data0:
             amp0 = np.abs(np.mean(_d_))/q.power_r ## unit: dB; only relative strength;

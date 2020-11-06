@@ -66,6 +66,10 @@ class qubitContext(object):
         self.IPdict_microwave = dict(self.deviceInfo['microwave_source'])
         
         
+        for qa_master in self.servers_qa.values():
+            break
+        self.servers_daq = qa_master.daq
+        
     @staticmethod
     def getQubits_paras(qubits: dict, key: str):
         """ Get specified parameters from dictionary (qubits)
