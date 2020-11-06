@@ -321,23 +321,20 @@ class zurich_qa(object):
         self.set_subscribe() ## set result paths
 
     def set_all_integration(self):
-        for i in range(len(self.qubit_frequency)):
-            self.set_qubit_integration_I_Q(i,self.qubit_frequency[i])
+        w_index = np.arange(0, self.integration_length , 1)
+        
+        for channel,freq in enumerate(self.qubit_frequency):
+            # assign real and image integration coefficient 
+            # integration settings for one I/Q pair
+            self.daq.setDouble('/{:s}/qas/0/integration/length'.format(self.id), self.integration_length)
+            
+            w_real = np.cos(w_index*freq/1e9/1.8*2*pi)
+            w_imag = np.sin(w_index*freq/1e9/1.8*2*pi)
 
-    def set_qubit_integration_I_Q(self, channel, qubit_frequency): 
-        # assign real and image integration coefficient 
-        # integration settings for one I/Q pair
-        from numpy import pi
-        self.daq.setDouble('/{:s}/qas/0/integration/length'.format(self.id), self.integration_length)
-        w_index      = np.arange(0, self.integration_length , 1)
-        weights_real = np.cos(w_index/1.8e9*qubit_frequency*2*pi)
-        weights_imag = np.sin(w_index/1.8e9*qubit_frequency*2*pi)
-        w_real = np.array(weights_real)
-        w_imag = np.array(weights_imag)
-        self.daq.setVector('/{:s}/qas/0/integration/weights/{}/real'.format(self.id, channel), w_real)
-        self.daq.setVector('/{:s}/qas/0/integration/weights/{}/imag'.format(self.id, channel), w_imag)
-        # set signal input mapping for QA channel : 0 -> 1 real, 2 imag
-        self.daq.setInt('/{:s}/qas/0/integration/sources/{:d}'.format(self.id, channel), 0)
+            self.daq.setVector('/{:s}/qas/0/integration/weights/{}/real'.format(self.id, channel), w_real)
+            self.daq.setVector('/{:s}/qas/0/integration/weights/{}/imag'.format(self.id, channel), w_imag)
+            # set signal input mapping for QA channel : 0 -> 1 real, 2 imag
+            self.daq.setInt('/{:s}/qas/0/integration/sources/{:d}'.format(self.id, channel), 0)
 
 
     ####--readout result part--####
@@ -353,11 +350,14 @@ class zurich_qa(object):
         self.daq.setInt('/{:s}/qas/0/result/enable'.format(self.id), 1) ## stert qa result module, wait value
         # self.daq.sync() ## wait setting 
         self.daq.setInt('/{:s}/qas/0/result/source'.format(self.id), source) # integration=7
-
-        self.paths = []
-        for ch in range(len(self.qubit_frequency)):
-            path = '/{:s}/qas/0/result/data/{:d}/wave'.format(self.id,ch)
-            self.paths.append(path)
+        
+        get_path = lambda ch: '/{:s}/qas/0/result/data/{:d}/wave'.format(self.id,ch)
+        chs = range(len(self.qubit_frequency))
+        self.paths = list(map(get_path,chs))
+        
+        # for ch in range(len(self.qubit_frequency)):
+            # path = '/{:s}/qas/0/result/data/{:d}/wave'.format(self.id,ch)
+            # self.paths.append(path)
 
         if self.noisy:
             print('\n', 'Subscribed paths: \n ', self.paths, '\n')
@@ -389,6 +389,9 @@ class zurich_qa(object):
     
         # Poll data
         time = 0
+        
+        get_vec = lambda v: v['vector']
+        
         while time < timeout and not all(gotem.values()):
             if self.noisy:
                 print('collecting results')
@@ -396,16 +399,20 @@ class zurich_qa(object):
             for p in paths:
                 if p not in dataset:
                     continue
-                for v in dataset[p]:
-                    chunks[p].append(v['vector'])
-                    num_obtained = sum([len(x) for x in chunks[p]])
-                    if num_obtained >= num_samples:
-                        gotem[p] = True
+                chunks[p] = list(map(get_vec,dataset[p]))
+                num_obtained = sum(map(len,chunks[p]))
+                if num_obtained >= num_samples:
+                    gotem[p] = True
+                # for v in dataset[p]:
+                    # chunks[p].append(v['vector'])
+                    # num_obtained = sum([len(x) for x in chunks[p]])
+                    # if num_obtained >= num_samples:
+                        # gotem[p] = True
             time += poll_length
     
         if not all(gotem.values()):
             for p in paths:
-                num_obtained = sum([len(x) for x in chunks[p]])
+                num_obtained = sum(map(len,chunks[p]))
                 print('Path {}: Got {} of {} samples'.format(p, num_obtained, num_samples))
             raise Exception('Timeout Error: Did not get all results within {:.1f} s!'.format(timeout))
     
@@ -414,12 +421,7 @@ class zurich_qa(object):
 
     def get_data(self):
         data = self.acquisition_poll(self.daq, self.paths, self.result_samples, timeout=10)
-        val = []
-        # chan = 0
-        for path, samples in data.items():
-            val.append(samples)
-            # chan += 1
-        return val
+        return list(data.values())
 
 
 

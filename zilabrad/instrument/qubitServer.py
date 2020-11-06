@@ -361,14 +361,14 @@ def awgWave_dict(ports,waves):
             port_dict = {'dev.id':[{port1:wave1,port2:wave2},{..},{..},{..}]}
     """
     port_dict = {}
-    for k in range(len(waves)):
+    for k,wave in enumerate(waves):
         dev_name = ports[k][0]
         awg_index = (ports[k][1]+1) // 2 -1 ## awg_index: (1~8)-->(0,1,2,3)
         p_idx =  (ports[k][1]+1) % 2 +1   ## port: (1~8) --> (1,2)
 
         if dev_name not in port_dict.keys():
             port_dict[dev_name] = [{},{},{},{}]
-        port_dict[dev_name][awg_index][p_idx] = waves[k]
+        port_dict[dev_name][awg_index][p_idx] = wave
 
     return port_dict
 
