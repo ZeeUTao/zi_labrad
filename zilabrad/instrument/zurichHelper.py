@@ -1,41 +1,19 @@
 # -*- coding: utf-8 -*-
 """
 Helpers for Zurich Instruments
-
 including classes for AWG devices, microwave sources
 """
 
 
-import logging
 import zhinst.utils ## create API object
 import textwrap ## to write sequencer's code
 import time ## show total time in experiments
-import matplotlib.pyplot as plt ## give picture
 import numpy as np 
-from math import ceil,pi
+from numpy import pi
+
 
 from zilabrad.util import singleton,singletonMany
-from zilabrad.pyle.registry import RegistryWrapper
-import labrad
-from labrad.units import Unit,Value
-_unitSpace = ('V', 'mV', 'us', 'ns','s', 'GHz', 'MHz','kHz','Hz', 'dBm', 'rad','None')
-V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l  = [Unit(s) for s in _unitSpace]
-import pyvisa
-
-from zilabrad.instrument.waveforms import convertUnits,waveServer
-
-logging.basicConfig(format='%(asctime)s | %(name)s [%(levelname)s] : %(message)s',
-                    level=logging.INFO
-                    )
-
-'''
-    TODO: add 'daq = zhinst.ziPython.ziDAQServer(ip,8004,6)' to create 
-          py API object insteal of 'create_api_session'.
-          Testing control API via IP/TCP from other PC.
-            -- 2020.10.13 finished by hwh
-
-'''
-
+from zilabrad.instrument.waveforms import convertUnits
 
 
 
@@ -123,7 +101,6 @@ class zurich_qa(object):
     ####-- device parameters set & get --####
     def set_result_samples(self,sample):
         """ sample: repetition number
-
             Meanwhile update repeat index in AWG sequencer
             and QA result parameter.
         """
@@ -134,7 +111,6 @@ class zurich_qa(object):
     @convertUnits(delay='s')
     def set_adc_trig_delay(self,delay):
         ''' delay: hd pulse start --> qa pulse start
-
             Here convert value from second to sample number, 
             8 samples as a unit.
         '''
@@ -144,7 +120,6 @@ class zurich_qa(object):
     @convertUnits(readout_delay='s')
     def set_readout_delay(self,readout_delay):
         ''' delay: qa pulse start --> qa integration start
-
             Here convert value from second to sample number, 
             4 samples as a unit.
         '''
@@ -156,10 +131,8 @@ class zurich_qa(object):
     def set_pulse_length(self, length):
         ''' length: set qa pulse length in AWGs, 
                     and set same length for demodulate.
-
             INPUT: unit --> Second, 
             SAVE: unit --> Sample number
-
             Demodulate has maximum length 4096.
             Ignore exceeding part. 
         '''
@@ -214,11 +187,8 @@ class zurich_qa(object):
         awg_program = textwrap.dedent("""\
         $str0       
         const f_s = _c0_;
-
         setTrigger(AWG_INTEGRATION_ARM);// initialize integration
-
         setTrigger(0b000);
-
         repeat (getUserReg(1)) {  // = qa.result_samples
                 // waitDigTrigger(1,1);
                 setTrigger(0b11); // trigger output: rise
@@ -245,7 +215,6 @@ class zurich_qa(object):
             awg_index: this device's awgs sequencer index. 
                        If awgs grouping == 4*2, this index 
                        can be selected as 0,1,2,3
-
             write into waveforms sequencer and compile it.
         """
         awgModule = self.daq.awgModule() ## this API needs 0.2s to create
@@ -273,7 +242,6 @@ class zurich_qa(object):
 
     def send_waveform(self,waveform=[[0],[0]]):
         """ waveform: all waveform in this device
-
             Here judge which awgs or port will be used
             to reload. Fill zeros at the end of waveform 
             to match the prior waveform length or compile 
@@ -505,7 +473,6 @@ class zurich_hd:
                 0 : 4x2 with HDAWG8; 2x2 with HDAWG4.
                 1: 2x4 with HDAWG8; 1x4 with HDAWG4.
                 2 : 1x8 with HDAWG8.
-
             set AWG grouping mode, following path:
             '/dev_id/system/awg/channelgrouping', Configure 
             how many independent sequencers, should run on 
@@ -580,7 +547,6 @@ class zurich_hd:
             awg_index: this device's awgs sequencer index. 
                        If awgs grouping == 4*2, this index 
                        can be selected as 0,1,2,3
-
             write into waveforms sequencer and compile it.
         """
         awgModule = self.daq.awgModule()
@@ -624,7 +590,6 @@ class zurich_hd:
             waveform: waveform list be sent
             awg_index: awg index need to reload waveform
             port: awg's port be used to reload
-
             Here judge which awgs or port will be used
             to reload. Fill zeros at the end of waveform 
             to match the prior waveform length or compile 
@@ -689,17 +654,14 @@ def convert_awg_waveform(wave_list):
     """
     Converts one or multiple arrays with waveform data to the native AWG
     waveform format (interleaved waves and markers as uint16).
-
     Waveform data can be provided as integer (no conversion) or floating point
     (range -1 to 1) arrays.
-
     Arguments:
       wave1 (array): Array with data of waveform 1.
       wave2 (array): Array with data of waveform 2.
       ...
     Returns:
       The converted uint16 waveform is returned.
-
     NOTE: waveform reload needs each two channel one by one.
     """
     def uint16_waveform(wave): # Prepare waveforms
@@ -711,37 +673,4 @@ def convert_awg_waveform(wave_list):
     data_tuple = (uint16_waveform(wave_list[0]),uint16_waveform(wave_list[1]))
     return np.vstack(data_tuple).reshape((-2,), order='F')
 
-
-
-
-
-
-####### ----------- old code -------- ########
-
-# def send_waveform(self,waveform=[[0],[0]],port=[],check=False):
-#     ## for 1*8 awgs grouping case
-#     if check:
-#         update_pulse_length()      
-#     wave_dict = dict(zip(port,waveform)) ## TODO: Aviod copying this wfs list;
-#     for k in range(8): 
-#         if k+1 not in port:
-#             wave_dict[k+1]=np.zeros(len(waveform[0]))
-
-#     _n_ = self.waveform_length - len(waveform[0])
-#     if _n_ >= 0: ## if wave length enough to reload
-#         waveform_add = [np.hstack((wave_dict[k+1],np.zeros(_n_))) for k in range(8)] ## fill [0] to hold wf len;
-#         for k in range(4): ## reload wave following port
-#             if k*2+1 in port or k*2+2 in port:
-#                 wf = [waveform_add[k*2],waveform_add[k*2+1]]
-#                 waveform_native = convert_awg_waveform(wf)
-#                 path = '/{:s}/awgs/{:d}/waveform/waves/{:d}'.format(self.id,k,0)
-#                 self.daq.setVector(path, waveform_native)
-#     else: ## if wave length too short, need building again;
-#         print('New HD waveform(len=%r > %r)'%(len(waveform[0]),self.waveform_length))
-#         waveform_send = [ _v_ for _v_ in wave_dict.values()]
-#         port_send = [ _p_ for _p_ in wave_dict.keys()]
-#         t0 = time.time()
-#         self.awg_builder(waveform=waveform_send,port=port_send)
-#         print('HD-awg_builder:%.3f'%(time.time()-t0))
-
-
+    
