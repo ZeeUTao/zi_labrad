@@ -15,12 +15,7 @@ import matplotlib.pyplot as plt ## give picture
 from functools import wraps
 import numpy as np 
 from numpy import pi
-
 import itertools
-import scipy.optimize
-
-
-from importlib import reload
 
 from zilabrad.instrument.qubitServer import check_device,stop_device
 from zilabrad.instrument.qubitServer import RunAllExperiment as RunAllExp
@@ -34,15 +29,12 @@ import zilabrad.instrument.waveforms as waveforms
 from zilabrad.pyle.envelopes import Envelope,NOTHING
 from zilabrad.plots.dataProcess import datahelp
 from zilabrad.plots import dataProcess 
-"""
-import for pylabrad
-"""
-from zilabrad.pyle import sweeps
 
-import time
-import numpy as np
+from zilabrad.pyle import sweeps
 from zilabrad.pyle.util import sweeptools
 from zilabrad.pyle.sweeps import checkAbort
+
+
 from labrad.units import Unit,Value
 import labrad
 _unitSpace = ('V','mV','us','ns','s','GHz','MHz','kHz','Hz','dBm','rad','None')
@@ -60,9 +52,7 @@ def dataset_create(dataset):
     if len(dataset.params):
         dv.add_parameters(tuple(dataset.params))
 
-"""
-end import for pylabrad 
-"""
+
 
 _bringup_experiment = [
     's21_scan',
@@ -127,7 +117,7 @@ def expfunc_decorator(func):
 
         start_ts = time.time()
         result = func(*args, **kwargs)
-        # stop_device() ## stop all device running
+        stop_device() ## stop all device running
         logger.info('use time (s): %.2f '%(time.time()-_t0_))
         return result
     return wrapper
@@ -146,6 +136,11 @@ def amp2power(amp):
     """
     return 20*np.log10(amp)+10
 
+def set_qubitsDC(qubits,experiment_length):
+    for _qb in qubits:
+        _qb['experiment_length'] = experiment_length
+        _qb.dc = DCbiasPulse(_qb)
+    return
 
 def readoutPulse(q):
     amp = power2amp(q['readout_amp']['dBm'])
@@ -170,333 +165,6 @@ def addXYgate(q,start,theta,phi):
     return 
     
     
-## 临时使用 ##
-# @expfunc_decorator
-def s21_scan_rot(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phi=0,
-    mw_power=None,bias=None,power=None,sb_freq=None,zpa=0.0,amp=None,phase=0,
-    name='s21_scan_rot',des='',back=False):
-    """ 
-    s21 scanning
-
-    Args:
-        sample: select experimental parameter from registry;
-        stats: Number of Samples for one sweep point;
-    """
-    ## load parameters 
-    from zilabrad.instrument import qubitServer as qS
-
-    def readoutPulse(q):
-        amp = power2amp(q['readout_amp']['dBm'])
-        length = q['readout_len']
-        f1 = waveforms.cosine(amp=amp,phase=q.demod_phase,start=0,freq=q.demod_freq,length=length)
-        f2 = waveforms.sine(amp=1*amp,phase=q.demod_phase,start=0,freq=q.demod_freq,length=length)
-        return f1,f2
-
-    sample, qubits, Qubits = loadQubits(sample, write_access=True)
-    q = qubits[measure]
-    q.channels = dict(q['channels'])
-    q.stats = stats
-    if freq == None: freq = q['readout_amp']
-    if bias == None:
-        bias = q['bias']
-    if power == None:
-        power = q['readout_amp']
-    if sb_freq == None:
-        q['demod_freq'] = q['readout_freq']['Hz']-q['readout_mw_fc']['Hz']
-    else:
-        q['demod_freq'] = sb_freq['Hz']
-    q.awgs_pulse_len += np.max(delay) ## add max length of hd waveforms 
-
-    ## set some parameters name;
-    axes = [(bias,'bias'),(zpa,'zpa'),(power,'power'),(amp,'amp'),(freq,'freq'),(sb_freq,'sb_freq'),(mw_power,'mw_power'),
-            (delay,'delay'),(phi,'phi (deg)'),(phase,'weight phase')]
-    deps = [('Amplitude','s21 for','a.u.'),('Phase','s21 for','rad'),
-                ('I','',''),('Q','','')]
-    kw = {'stats': stats}
-
-    # create dataset
-    dataset = sweeps.prepDataset(sample, name+des, axes, deps,measure=measure,kw=kw)
-
-    qa = qS.qubitContext().servers_qa['qa_1']
-    daq = qa.daq ## qS.qubitContext().servers_daq
-    # qa.waveform_length = -1
-    # daq.setInt('/{:s}/awgs/0/outputs/0/mode'.format(qa.id), 1)
-    # daq.setInt('/{:s}/awgs/0/outputs/1/mode'.format(qa.id), 1)
-    # daq.setInt('/{:s}/qas/0/integration/mode'.format(qa.id), 1)
-    # daq.setDouble('/{:s}/oscs/0/freq'.format(qa.id), q['demod_freq'])
-    max_amp = np.max(amp)
-
-    def runSweeper(devices,para_list):
-        bias,zpa,power,amp,freq,sb_freq,mw_power,delay,phi,phase = para_list
-        if amp == None:
-            q['readout_amp'] = power*dBm
-        else:
-            q['readout_amp'] = amp2power(amp)*dBm
-        
-        q['readout_mw_fc'] = (freq - q['demod_freq'])*Hz
-
-        # for qb in qubits: ## for sweeping sideband
-            # qb.demod_freq = freq - qb['readout_mw_fc']['Hz']
-
-        start = 0   
-        start += delay
-        start += 100e-9 
-        start += q['qa_start_delay']['s']
-
-        q['experiment_length'] = start
-        q['do_readout'] = True
-
-        q['demod_phase'] = phase
-        # q.r = [waveforms.square(amp=power2amp(q['readout_amp']['dBm']),start=0,length=q['readout_len']),
-        #        waveforms.square(amp=power2amp(q['readout_amp']['dBm']),start=0,length=q['readout_len'])]
-        q.r = readoutPulse(q)
-        # daq.setDouble('/{:s}/awgs/0/outputs/0/amplitude'.format(qa.id), -1)
-
-        ###########################
-        ## run Qubits Experiment ##
-        ###########################
-        wave_readout = qS.makeSequence_readout([q])
-        qa.send_waveform(waveform=wave_readout)
-        ## Now it is only two microwave sources, in the future, it should be modified
-        qS.set_microwaveSource(freqList = [q['readout_mw_fc'],q['xy_mw_fc']],
-                            powerList = [q['readout_mw_power'],q['xy_mw_power']])
-
-        # only run once in the whole experimental loop
-        if 'isNewExpStart' not in q.keys():
-            print('isNewExpStart, setupDevices')
-            qa.set_result_samples(q['stats'])  
-            qa.set_readout_delay(q['readout_delay'])
-            qa.set_pulse_length(q['readout_len'])
-            qa.set_adc_trig_delay(q['bias_start'][s]+q['experiment_length']) 
-            # ## set demodulate frequency for qubits if you need readout the qubit
-            # f_read = []
-            # for qb in qubits:
-            #     if qb['do_readout']: ##in _q.keys():
-            #         f_read += [qb.demod_freq]
-            # if len(f_read) == 0:
-            #     raise Exception('Must set one readout frequency at least')
-
-            qa.qubit_frequency = [q.demod_freq]*2
-            # # qa.set_all_integration() ## set integration weights
-            # for ch in [0,1]:
-            #     qa.set_qubit_integration_I_Q(ch,q.demod_freq)
-            # qa.set_subscribe(source=2) ## source=2 --> rotation
-            ## Rotation, should set parameter
-            daq.setInt('/{:s}/qas/0/integration/sources/0'.format(qa.id), 0)
-            daq.setInt('/{:s}/qas/0/integration/sources/1'.format(qa.id), 1)
-            daq.setDouble('/{:s}/qas/0/deskew/rows/1/cols/0'.format(qa.id), 0)
-            daq.setDouble('/{:s}/qas/0/deskew/rows/0/cols/1'.format(qa.id), 0)
-            daq.setDouble('/{:s}/qas/0/deskew/rows/1/cols/1'.format(qa.id), 1)
-            daq.setDouble('/{:s}/qas/0/deskew/rows/0/cols/0'.format(qa.id), 1)
-            # daq.setComplex('/{:s}/qas/0/rotations/0'.format(qa.id),np.exp(-1j*phi/180*np.pi) )
-            # daq.setComplex('/{:s}/qas/0/rotations/1'.format(qa.id),np.exp(-1j*(phi/180-1/2)*np.pi) )
-
-            q['isNewExpStart'] = False # actually it can be arbitrary value
-        else:
-            qa.set_adc_trig_delay(q['bias_start'][s]+q['experiment_length'])
-
-        daq.setComplex('/{:s}/qas/0/rotations/0'.format(qa.id),np.sqrt(2)*np.exp(1j*(phi/180)*np.pi) )
-        daq.setComplex('/{:s}/qas/0/rotations/1'.format(qa.id),np.sqrt(2)*np.exp(1j*(phi/180+1/2)*np.pi) )
-        ## run AWG and reaout devices and get data
-        qa.set_subscribe(source=2)
-        qa.awg_open()## download experimental data
-        data = qa.get_data()
-        qa.awg_close()
-
-        _d_ = data[0]+1j*data[1]
-        amp = np.abs(np.mean(_d_))/amp ##power2amp(q['readout_amp']['dBm']) ## only relative strength;
-        phase = np.angle(np.mean(_d_))
-        Iv = np.mean(np.real(_d_))
-        Qv = np.mean(np.imag(_d_))
-        result = [amp,phase,Iv,Qv]
-        return result 
-
-    axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
-    result_list = RunAllExp(runSweeper,axes_scans,dataset)
-    if back:
-        return result_list
-        
-
-
-@expfunc_decorator
-def s21_scan_Nq(sample,measure=[0,1],stats=1024,freq=6.0*GHz,delay=0*ns,phase=0,
-    mw_power=None,bias=None,power=None,sb_freq=None,df=None,
-    name='s21_scan Nq',des='',back=False):
-    """ 
-    s21 scanning
-
-    Args:
-        sample: select experimental parameter from registry;
-        stats: Number of Samples for one sweep point;
-    """
-    ## load parameters 
-    sample, qubits, Qubits = loadQubits(sample, write_access=True)
-    q = qubits[measure[0]]
-    meas_qubits = [qubits[k] for k in measure]
-    for qb in qubits:
-        qb.channels = dict(qb['channels'])
-    q.stats = stats
-
-    if bias == None:
-        bias = q['bias']
-    if power == None:
-        power = q['readout_amp']
-    if sb_freq == None:
-        q.demod_freq = q['readout_freq']['Hz']-q['readout_mw_fc']['Hz']
-    else:
-        q.demod_freq = sb_freq['Hz']
-    if mw_power == None:
-        mw_power = q['readout_mw_power']
-    q.awgs_pulse_len += np.max(delay) ## add max length of hd waveforms 
-
-    ## set some parameters name;
-    axes = [(freq,'freq'),(df,'df'),(bias,'bias'),(power,'power'),(sb_freq,'sb_freq'),(mw_power,'mw_power'),
-            (delay,'delay'),(phase,'phase')]
-    deps = []
-    for k in range(len(measure)):
-        qn = sample.config[measure[k]]
-        deps += [('Amplitude','s21 for %s'%qn,'a.u.'),('Phase','s21 for %s'%qn,'rad'),
-                 ('I','%s'%qn,''),('Q','%s'%qn,'')]
-    kw = {'stats': stats}
-
-    # create dataset
-    dataset = sweeps.prepDataset(sample, name+des, axes, deps,measure=measure,kw=kw)
-
-    def runSweeper(devices,para_list):
-        freq,df,bias,power,sb_freq,mw_power,delay,phase = para_list
-        q.power_r = power2amp(power)
-        # q['readout_mw_fc'] = (freq - q.demod_freq)*Hz
-
-        # idx = 0
-        for qb in meas_qubits:
-            qb.power_r = power2amp(power)
-            qb.demod_freq = qb['readout_freq']['Hz'] - qb['readout_mw_fc']['Hz'] + df
-            # idx += 1
-
-            start = 0   
-            # qb.z = waveforms.square(amp=0)
-            # qb.xy = [waveforms.square(amp=0),waveforms.square(amp=0)]
-            qb['bias'] = bias
-
-            start += delay
-            start += 100e-9 
-            start += qb['qa_start_delay']['s']
-
-            qb['experiment_length'] = start
-            qb['do_readout'] = True
-
-            # qb.dc = waveforms.square(amp=qb['bias'],start=-qb['bias_start']['s'],end=qb['bias_end']['s']+qb['readout_len']['s']+qb['experiment_length'])
-            ## q.demod_phase = q.qa_adjusted_phase[Hz]*(qa.adc_trig_delay_s) ## adjusted phase
-            qb.r = waveforms.readout(amp=qb.power_r,phase=qb.demod_phase+phase,freq=qb.demod_freq,start=0,length=qb.readout_len)
-        ## bias
-        q.dc = waveforms.square(amp=q['bias'],start=-q['bias_start']['s'],end=q['bias_end']['s']+q['readout_len']['s']+q['experiment_length'])
-        ## run Qubits Experiment
-        t0 = time.time()
-        data = runQ(meas_qubits,devices)
-        print('runQ use %.3f'%(time.time()-t0))
-        print('ch:',len(data))
-
-        result = []
-        for k in range(len(data)):
-            amp = np.mean(np.abs(data[k]))/meas_qubits[k].power_r ## unit: dB; only relative strength;
-            phase = np.mean(np.angle(data[k]))
-            Iv = np.mean(np.real(data[k]))
-            Qv = np.mean(np.imag(data[k]))
-            result += [amp,phase,Iv,Qv]
-
-        return result 
-
-    axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
-    result_list = RunAllExp(runSweeper,axes_scans,dataset)
-    if back:
-        return result_list
-
-@expfunc_decorator
-def spectroscopy_Nq(sample,measure=[0],stats=1024,freq=6.0*GHz,specLen=1*us,specAmp=0.05,sb_freq=0*Hz,
-    bias=None,zpa=None,
-    name='spectroscopy_Nq',des='',back=False):
-    """ 
-        sample: select experimental parameter from registry;
-        stats: Number of Samples for one sweep point;
-    """
-    sample, qubits, Qubits = loadQubits(sample, write_access=True)
-    q = qubits[measure[0]]
-    meas_qubits = [qubits[k] for k in measure]
-    for qb in qubits:
-        qb.channels = dict(qb['channels'])
-    for qb in meas_qubits:
-        q.stats = stats
-        q.power_r = power2amp(q['readout_amp']['dBm'])
-        q.demod_freq = (q['readout_freq']-q['readout_mw_fc'])[Hz]
-
-    if bias == None:
-        bias = q['bias']
-    if zpa == None:
-        zpa = q['zpa']
-
-    ## set some parameters name;
-    axes = [(freq,'freq'),(specAmp,'specAmp'),(bias,'bias'),(zpa,'zpa')]
-    deps = []
-    for k in range(len(measure)):
-        qn = sample.config[measure[k]]
-        deps += [('Amplitude','s21 for %s'%qn,'a.u.'),('Phase','s21 for %s'%qn,'rad'),
-                 ('I','%s'%qn,''),('Q','%s'%qn,''),
-                 ('probability |0>','%s'%qn,''),('probability |1>','%s'%qn,'')]
-    kw = {'stats': stats,'sb_freq': sb_freq}
-
-    # create dataset
-    dataset = sweeps.prepDataset(sample, name+des, axes,deps,kw=kw,measure=measure)
-
-    def runSweeper(devices,para_list):
-        freq,specAmp,bias,zpa = para_list
-        
-        # q['xy_mw_fc'] = freq-sb_freq[Hz]
-        ## 临时使用
-        sb_freq = freq*Hz - q['xy_mw_fc']
-        
-        start = 0
-        q.z = waveforms.square(amp=zpa,start=start,end=start+specLen[s]+100e-9)
-        start += 50e-9
-        q.xy = [waveforms.cosine(amp=specAmp,freq=sb_freq[Hz],start=start,end=start+specLen[s]),
-                waveforms.sine(amp=specAmp,freq=sb_freq[Hz],start=start,end=start+specLen[s])]
-        start += specLen[s] + 50e-9
-        q['bias'] = bias
-
-        start += 100e-9
-        start += q['qa_start_delay'][s]
-
-        for qb in meas_qubits:    
-            qb['do_readout'] = True
-            ## q.demod_phase = q.qa_adjusted_phase[Hz]*(qa.adc_trig_delay_s) ## adjusted phase
-            qb.r = waveforms.readout(amp=qb.power_r,phase=qb.demod_phase,freq=qb.demod_freq,start=0,length=qb.readout_len)
-
-        for qb in qubits:
-            qb['experiment_length'] = start
-            qb.dc = waveforms.square(amp=qb['bias'],start=-qb['bias_start']['s'],end=qb['bias_end']['s']+qb['readout_len']['s']+qb['experiment_length'])
-
-        ## start this runQ Experiment
-        data = runQ(meas_qubits,devices)
-
-        ## analyze data and return
-        result = []
-        for k in range(len(data)):
-            amp = np.mean(np.abs(data[k]))/meas_qubits[k].power_r ##20*np.log10(np.mean(np.abs(_d_))/power) ## unit: dB; only relative strength;
-            phase = np.mean(np.angle(data[k]))
-            Iv = np.mean(np.real(data[k]))
-            Qv = np.mean(np.imag(data[k]))
-            prob = tunneling([meas_qubits[k]],[data[k]],level=2)
-            ## multiply channel should unfold to a list for return result
-            result += [amp,phase,Iv,Qv,prob[0],prob[1]]
-        return result
-
-    axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
-    result_list = RunAllExp(runSweeper,axes_scans,dataset)
-    if back:
-        return result_list
-
-####### 临时使用结束 ######
-
-
 
 @expfunc_decorator
 def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phase=0,
@@ -515,14 +183,12 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phase=0,
     q.channels = dict(q['channels'])
     q.stats = stats
     if freq == None: freq = q['readout_amp']
-    if bias == None:
-        bias = q['bias']
-    if power == None:
-        power = q['readout_amp']
+    if bias == None: bias = q['bias']
+    if power == None: power = q['readout_amp']
+
     q.power_r = power2amp(q['readout_amp']['dBm'])
     q.demod_freq = q['readout_freq'][Hz]-q['readout_mw_fc'][Hz]
-    if mw_power == None:
-        mw_power = q['readout_mw_power']
+    if mw_power == None: mw_power = q['readout_mw_power']
     q.awgs_pulse_len += np.max(delay) ## add max length of hd waveforms 
 
     ## set some parameters name;
@@ -550,124 +216,34 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phase=0,
         start += 100e-9 
         start += q['qa_start_delay']['s']
 
-        q['experiment_length'] = start
+
+        for _qb in qubits:
+            _qb['experiment_length'] = start
+            _qb.dc = DCbiasPulse(_qb)
+
         q['do_readout'] = True
-        q.dc = DCbiasPulse(q)
         q.r = readoutPulse(q)
         ## q.demod_phase = q.qa_adjusted_phase[Hz]*(qa.adc_trig_delay_s) ## adjusted phase
         
-
-        ## run Qubits Experiment
         data = runQ([q],devices)
 
         for _d_ in data:
-            amp = np.abs(np.mean(_d_))/q.power_r ## unit: dB; only relative strength;
+            amp = np.abs(np.mean(_d_))/q.power_r
             phase = np.angle(np.mean(_d_))
-            Iv = np.mean(np.real(_d_))
-            Qv = np.mean(np.imag(_d_))
-            break ## only read the first channel
-        result = [amp,phase,Iv,Qv]
-        return result 
+            Iv = np.real(np.mean(_d_))
+            Qv = np.imag(np.mean(_d_))
+            #break ## only read the first channel
+        return [amp,phase,Iv,Qv] 
 
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
     result_list = RunAllExp(runSweeper,axes_scans,dataset)
     if back:
         return result_list
 
-@expfunc_decorator
-def s21_scan_sb(sample,measure=0,stats=1024,demod_freq=100*MHz,freq=6.0*GHz,delay=0*ns,phase=0,
-    mw_power=None,bias=None,power=None,sb_freq=0.*MHz,zpa=0.0,
-    name='s21_sideb ',des='',back=False):
-    """ 
-    s21 scanning for testing sideband
 
-    Args:
-        sample: select experimental parameter from registry;
-        stats: Number of Samples for one sweep point;
-    """
-    ## load parameters 
-    sample, qubits, Qubits = loadQubits(sample, write_access=True)
-    q = qubits[measure]
-    q.channels = dict(q['channels'])
-    q.stats = stats
-    if freq == None: freq = q['readout_amp']
-    if bias == None:
-        bias = q['bias']
-    if power == None:
-        power = q['readout_amp']
-
-    if mw_power == None:
-        mw_power = q['readout_mw_power']
-    q.awgs_pulse_len += np.max(delay) ## add max length of hd waveforms 
-
-    ## set some parameters name;
-    axes = [(freq,'freq'),(bias,'bias'),(zpa,'zpa'),(power,'power'),(demod_freq,'demod_freq'),(sb_freq,'sb_freq'),(mw_power,'mw_power'),
-            (delay,'delay'),(phase,'phase')]
-    deps = [('Amplitude','s21 for','a.u.'),('Phase','s21 for','rad'),
-                ('I','',''),('Q','','')]
-    kw = {'stats': stats}
-
-    # create dataset
-    dataset = sweeps.prepDataset(sample, name+des, axes, deps,measure=measure,kw=kw)
-
-    def runSweeper(devices,para_list):
-        freq,bias,zpa,power,demod_freq,sb_freq,mw_power,delay,phase = para_list
-        q['readout_amp'] = power*dBm
-        q.power_r = power2amp(power)
-        
-        q['demod_freq'] = demod_freq
-        
-
-        
-        # q['readout_mw_fc'] = (freq - q['demod_freq'])*Hz
-        
-        start = 0   
-        q.z = waveforms.square(amp=zpa)
-        q.xy = [waveforms.square(amp=0),waveforms.square(amp=0)]
-        q['bias'] = bias
-
-        start += delay
-        start += 100e-9 
-        start += q['qa_start_delay']['s']
-
-        q['experiment_length'] = start
-        q['do_readout'] = True
-
-        q.dc = DCbiasPulse(q)
-        # q.r = readoutPulse(q,delay)
-        q.r = waveforms.readout(amp=q.power_r,phase=q['demod_phase'],freq=sb_freq,start=start,length=q['readout_len'])
-        ## q.demod_phase = q.qa_adjusted_phase[Hz]*(qa.adc_trig_delay_s) ## adjusted phase
-        
-        qContext = qubitContext()
-        qa = qContext.servers_qa['qa_1']
-        
-        f_read = []
-        for qb in qubits:
-            if qb['do_readout']: ##in _q.keys():
-                f_read += [qb.demod_freq]
-        if len(f_read) == 0:
-            raise Exception('Must set one readout frequency at least')
-        qa.set_qubit_frequency(f_read)
-        # print("qa set_qubit_frequency")
-        ## run Qubits Experiment
-        data = runQ([q],devices)
-
-        for _d_ in data:
-            amp = np.abs(np.mean(_d_))/q.power_r ## unit: dB; only relative strength;
-            phase = np.angle(np.mean(_d_))
-            Iv = np.mean(np.real(_d_))
-            Qv = np.mean(np.imag(_d_))
-            break ## only read the first channel
-        result = [amp,phase,Iv,Qv]
-        return result 
-
-    axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
-    result_list = RunAllExp(runSweeper,axes_scans,dataset)
-    if back:
-        return result_list
 
 @expfunc_decorator
-def spectroscopy(sample,measure=0,stats=1024,freq=6.0*GHz,specLen=1*us,specAmp=0.05,sb_freq=0*Hz,
+def spectroscopy(sample,measure=0,stats=1024,freq=6.0*GHz,specLen=1*us,specAmp=0.05,sb_freq=None,
     bias=None,zpa=None,
     name='spectroscopy',des='',back=False):
     """ 
@@ -679,10 +255,10 @@ def spectroscopy(sample,measure=0,stats=1024,freq=6.0*GHz,specLen=1*us,specAmp=0
     q.channels = dict(q['channels'])
     q.stats = stats
 
-    if bias == None:
-        bias = q['bias']
-    if zpa == None:
-        zpa = q['zpa']
+    if bias == None: bias = q['bias']
+    if zpa == None: zpa = q['zpa']
+    if sb_freq == None: sb_freq = (q['f10'] - q['xy_mw_fc'])
+
     q.power_r = power2amp(q['readout_amp']['dBm'])
     q.demod_freq = (q['readout_freq']-q['readout_mw_fc'])[Hz]
 
@@ -701,36 +277,34 @@ def spectroscopy(sample,measure=0,stats=1024,freq=6.0*GHz,specLen=1*us,specAmp=0
         freq,specAmp,bias,zpa = para_list
         
         q['xy_mw_fc'] = freq*Hz-sb_freq
-        # ## 临时使用
-        # sb_freq = freq*Hz - q['xy_mw_fc']
 
         start = 0
-        q.z = waveforms.square(amp=zpa,start=start,end=start+specLen[s]+100e-9)
+        q.z = waveforms.square(amp=zpa,start=start,length=q.piLen[s]+100e-9)
         start += 50e-9
-        q.xy = [waveforms.cosine(amp=specAmp,freq=sb_freq[Hz],start=start,end=start+specLen[s]),
-                waveforms.sine(amp=specAmp,freq=sb_freq[Hz],start=start,end=start+specLen[s])]
-        start += specLen[s] + 50e-9
+        q.xy = [waveforms.cosine(amp=specAmp,freq=sb_freq['Hz'],start=start,end=start+specLen['s']),
+                waveforms.sine(amp=specAmp,freq=sb_freq['Hz'],start=start,end=start+specLen['s'])]
+        start += q.piLen[s] + 50e-9
         q['bias'] = bias
 
         start += 100e-9
-        start += q['qa_start_delay'][s]
+        start += q['qa_start_delay']['s']
 
-        q['experiment_length'] = start
+        for _qb in qubits:
+            _qb['experiment_length'] = start
+            _qb.dc = DCbiasPulse(_qb)
+
         q['do_readout'] = True
-
-        q.dc = DCbiasPulse(q)
         q.r = readoutPulse(q)
         
-        ## start this runQ Experiment
+
         data = runQ([q],devices)
 
-        ## analyze data and return
-        for _d_ in data:
-            amp = np.abs(np.mean(_d_))/q.power_r ##20*np.log10(np.mean(np.abs(_d_))/power) ## unit: dB; only relative strength;
-            phase = np.angle(np.mean(_d_))
-            Iv = np.mean(np.real(_d_))
-            Qv = np.mean(np.imag(_d_))
-            prob = tunneling([q],[_d_],level=2)
+        _d_ = data[0]
+        amp = np.abs(np.mean(_d_))/q.power_r
+        phase = np.angle(np.mean(_d_))
+        Iv = np.mean(np.real(_d_))
+        Qv = np.mean(np.imag(_d_))
+        prob = tunneling([q],[_d_],level=2)
         ## multiply channel should unfold to a list for return result
         result = [amp,phase,Iv,Qv,prob[0],prob[1]]
         return result
@@ -743,9 +317,8 @@ def spectroscopy(sample,measure=0,stats=1024,freq=6.0*GHz,specLen=1*us,specAmp=0
 
 
 @expfunc_decorator
-def rabihigh(sample,measure=0,stats=1024,piamp=0.05,df=0*MHz,
-    bias=None,zpa=None,
-    name='rabihigh',des='',back=False):
+def rabihigh(sample,measure=0,stats=1024,piamp=0.05,piLen=None,df=0*MHz,
+    bias=None,zpa=None,name='rabihigh',des='',back=False):
     """ 
         sample: select experimental parameter from registry;
         stats: Number of Samples for one sweep point;
@@ -754,21 +327,19 @@ def rabihigh(sample,measure=0,stats=1024,piamp=0.05,df=0*MHz,
     q = qubits[measure]
     q.channels = dict(q['channels'])
 
-    if bias == None:
-        bias = q['bias']
-    if zpa == None:
-        zpa = q['zpa']
-    if piamp == None:
-        piamp = q['piAmp']
+    if bias == None: bias = q['bias']
+    if zpa == None: zpa = q['zpa']
+    if piamp == None: piamp = q['piAmp']
+    if piLen == None: piLen = q['piLen']
+
     q.power_r = power2amp(q['readout_amp']['dBm'])
     q.demod_freq = q['readout_freq'][Hz]-q['readout_mw_fc'][Hz]
     q.sb_freq = (q['f10'] - q['xy_mw_fc'])[Hz]
 
     ## set some parameters name;
-    axes = [(bias,'bias'),(zpa,'zpa'),(df,'df'),(piamp,'piamp')]
+    axes = [(bias,'bias'),(zpa,'zpa'),(df,'df'),(piamp,'piamp'),(piLen,'piLen')]
     deps = [('Amplitude','s21 for','a.u.'),('Phase','s21 for','rad'),
             ('I','',''),('Q','',''),
-            ('probability','|0>',''),
             ('probability','|1>','')]
     kw = {'stats': stats}
 
@@ -777,17 +348,15 @@ def rabihigh(sample,measure=0,stats=1024,piamp=0.05,df=0*MHz,
 
     q_copy = q.copy()
     def runSweeper(devices,para_list):
-        bias,zpa,df,piamp = para_list
+        bias,zpa,df,piamp,piLen = para_list
         q['xy_mw_fc'] = q_copy['xy_mw_fc'] + df*Hz
-        # ## 临时使用
-        # q.sb_freq = q_copy['sb_freq']+df
 
         start = 0
-        q.z = waveforms.square(amp=zpa,start=start,length=q.piLen[s]+100e-9)
+        q.z = waveforms.square(amp=zpa,start=start,length=piLen+100e-9)
         start += 50e-9
-        q.xy = [waveforms.cosine(amp=piamp,freq=q.sb_freq,start=start,length=q.piLen[s]),
-                waveforms.sine(amp=piamp,freq=q.sb_freq,start=start,length=q.piLen[s])]
-        start += q.piLen[s] + 50e-9
+        q.xy = [waveforms.cosine(amp=piamp,freq=q.sb_freq,start=start,length=piLen),
+                waveforms.sine(amp=piamp,freq=q.sb_freq,start=start,length=piLen)]
+        start += piLen + 50e-9
         q['bias'] = bias
 
         start += 100e-9 ## additional readout gap, avoid hdawgs fall affect 
@@ -798,23 +367,19 @@ def rabihigh(sample,measure=0,stats=1024,piamp=0.05,df=0*MHz,
 
         q.dc = DCbiasPulse(q)
         q.r = readoutPulse(q)
-        # q.dc = waveforms.square(amp=q['bias'],start=-q['bias_start']['s'],end=q['bias_end']['s']+q['readout_len']['s']+q['experiment_length'])
-        ## q.demod_phase = q.qa_adjusted_phase[Hz]*(qa.adc_trig_delay_s) ## adjusted phase
-        
-        # q.r = waveforms.readout(amp=q.power_r,phase=q.demod_phase,freq=q.demod_freq,start=0,length=q.readout_len)
 
         ## start to run experiment
         data = runQ([q],devices)
 
         ## analyze data and return
-        for _d_ in data:
-            amp = np.abs(np.mean(_d_))/q.power_r ## only relative strength;
-            phase = np.angle(np.mean(_d_))
-            Iv = np.mean(np.real(_d_))
-            Qv = np.mean(np.imag(_d_))
-            prob = tunneling([q],[_d_],level=2)
+        _d_ = data[0]
+        amp = np.abs(np.mean(_d_))/q.power_r ## only relative strength;
+        phase = np.angle(np.mean(_d_))
+        Iv = np.mean(np.real(_d_))
+        Qv = np.mean(np.imag(_d_))
+        prob = tunneling([q],[_d_],level=2)
         ## multiply channel should unfold to a list for return result
-        result = [amp,phase,Iv,Qv,prob[0],prob[1]]
+        result = [amp,phase,Iv,Qv,prob[1]]
         return result
         
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
@@ -859,11 +424,10 @@ def IQraw(sample,measure=0,stats=1024,update=False,analyze=False,reps=1,
         
         q['experiment_length'] = start
         
-        for qb in qubits:
-            qb['experiment_length'] = start
-            qb['do_readout'] = True
-            qb.dc = DCbiasPulse(q)
-            qb.r = readoutPulse(q)
+
+
+        q['do_readout'] = True
+        q.r = readoutPulse(q)
 
         ## start to run experiment
         data1 = runQ(qubits,devices)
@@ -890,15 +454,15 @@ def IQraw(sample,measure=0,stats=1024,update=False,analyze=False,reps=1,
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
     
 
-    result_list = RunAllExp(runSweeper,axes_scans,dataset,collect,raw)
-    data = np.asarray(result_list[0])
+    results = RunAllExp(runSweeper,axes_scans,dataset,collect,raw)
+    data = np.asarray(results[0])
     # print(data)
     if update:
         dataProcess._updateIQraw2(data=data,Qb=Qb,dv=None,update=update,analyze=analyze)
     return data
 
 @expfunc_decorator
-def measureFidelity(sample,rep=10,measure=0,stats=1024,update=False,analyze=False,
+def measureFidelity(sample,rep=10,measure=0,stats=1024,update=True,analyze=False,
     name='measureFidelity',des='',back=True):
     reps = np.arange(rep)
     
@@ -908,14 +472,16 @@ def measureFidelity(sample,rep=10,measure=0,stats=1024,update=False,analyze=Fals
     q.channels = dict(q['channels'])
     
     for qb in qubits:
-        qb.power_r = power2amp(qb['readout_amp']['dBm'])
         qb.demod_freq = qb['readout_freq'][Hz]-qb['readout_mw_fc'][Hz]
+
     q.sb_freq = (q['f10'] - q['xy_mw_fc'])[Hz]
 
     ## set some parameters name;
     axes = [(reps,'reps')]
-    deps = [('Is','|0>',''),('Qs','|0>',''),
-            ('Is','|1>',''),('Qs','|1>','')]
+
+    deps_text = lambda idxs: ('prepare |%d>-> measure (|%d>)'%(idxs[0], idxs[1]),'','')
+    deps = list(map(deps_text,itertools.product([0,1],[0,1]) ) )
+
     kw = {'stats': stats}
 
     # create dataset
@@ -924,47 +490,46 @@ def measureFidelity(sample,rep=10,measure=0,stats=1024,update=False,analyze=Fals
     def runSweeper(devices,para_list):
         ## with pi pulse --> |1> ##
         reps = para_list
-        
         start = 0
         q.z = waveforms.square(amp=q.zpa[V],start=start,length=q.piLen[s]+100e-9)
         start += 50e-9
-        q.xy = [waveforms.cosine(amp=q.piAmp,freq=q.sb_freq,start=start,length=q.piLen[s]),
-                waveforms.sine(amp=q.piAmp,freq=q.sb_freq,start=start,length=q.piLen[s])]
-        start += q.piLen[s] + 50e-9
+
+        q.xy = XYnothing(q)
+        addXYgate(q,start,np.pi,0.)
+
+        start += q['piLen']['s'] + 50e-9
         start += 100e-9 
         start += q['qa_start_delay'][s] 
         
         q['experiment_length'] = start
-        
-        for qb in qubits:
-            qb['experiment_length'] = start
-            qb['do_readout'] = True
-            qb.dc = DCbiasPulse(q)
-            qb.r = readoutPulse(q)
+        set_qubitsDC(qubits,q['experiment_length'])
 
+        q['do_readout'] = True
+        q.r = readoutPulse(q)
+
+        result = []
         ## start to run experiment
-        data1 = runQ(qubits,devices)
-
+        data1 = runQ(qubits,devices)[0]
+        
         ## no pi pulse --> |0> ##
-        q.xy = [waveforms.square(amp=0),waveforms.square(amp=0)]
-        ## start to run experiment
-        data0 = runQ(qubits,devices)
-        prob = tunneling([q],[_d_],level=2)
-        ## analyze data and return
-        Is0 = np.real(data0[measure])
-        Qs0 = np.imag(data0[measure])
+        q.xy = XYnothing(q)
+        addXYgate(q,start,0.,0.)
 
-        Is1 = np.real(data1[measure])
-        Qs1 = np.imag(data1[measure])
+        ## start to run experiment
+        data0 = runQ(qubits,devices)[0]
+
+        prob0 = tunneling([q],[data0],level=2)
+        prob1 = tunneling([q],[data1],level=2)
         
-        result = [Is0,Qs0,Is1,Qs1]
-        if back:
-            return result
+        
+        return [prob0[0], prob0[1],prob1[0], prob1[1]]
 
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
-    result_list = RunAllExp(runSweeper,axes_scans,dataset,collect,raw)
-
-    return
+    results = RunAllExp(runSweeper,axes_scans,dataset)
+    if update:
+        Qb['MatRead']=np.mean(results,0)[1:].reshape(2,2)
+    if back:
+        return results
 
 
 @expfunc_decorator

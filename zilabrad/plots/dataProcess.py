@@ -355,7 +355,7 @@ def _updateIQraw2(data,Qb,dv=None,update=True,analyze=False):
 
 def UpdateIQraw2(dh,idx,Qb,dv=None,update=True,analyze=False):
     data = dh.getDataset(idx,dv)
-    _updateIQraw2(data,Qb,dve,update,analyze)
+    _updateIQraw2(data,Qb,dv,update,analyze)
     return
 
 def plotIQraw(dh,idx,dv=None,level=2):

@@ -124,7 +124,7 @@ def expfunc_decorator(func):
     def wrapper(*args, **kwargs):
         logger = logging.getLogger(func.__name__)
         
-        # check_device()
+        check_device()
         _t0_ = time.time()
 
         start_ts = time.time()
@@ -173,7 +173,51 @@ def addXYgate(q,start,theta,phi):
     
     
 ## 临时使用 ##
-# @expfunc_decorator
+
+def setupQA_rot(qubits):
+    ## set parameter for rotation demodulate
+    # only run once in the whole experimental loop
+    from zilabrad.instrument import qubitServer as qS
+    q = qubits[0]
+    qa = qS.qubitContext().servers_qa['qa_1']
+
+    if 'isNewExpStart' not in q.keys():
+        print('isNewExpStart, setupDevices')
+        qa.set_result_samples(q['stats'])  
+        qa.set_readout_delay(q['readout_delay'])
+        qa.set_pulse_length(q['readout_len'])
+
+        qa.qubit_frequency = [q.demod_freq]*2
+        qa.set_subscribe(source=2) ## rotation = 2
+
+        daq = qa.daq
+        daq.setInt('/{:s}/qas/0/integration/sources/0'.format(qa.id), 0)
+        daq.setInt('/{:s}/qas/0/integration/sources/1'.format(qa.id), 1)
+        daq.setDouble('/{:s}/qas/0/deskew/rows/1/cols/0'.format(qa.id), 0)
+        daq.setDouble('/{:s}/qas/0/deskew/rows/0/cols/1'.format(qa.id), 0)
+        daq.setDouble('/{:s}/qas/0/deskew/rows/1/cols/1'.format(qa.id), 1)
+        daq.setDouble('/{:s}/qas/0/deskew/rows/0/cols/0'.format(qa.id), 1)
+        phi = -45
+        daq.setComplex('/{:s}/qas/0/rotations/0'.format(qa.id),np.sqrt(2)*np.exp(1j*(phi/180)*np.pi) )
+        daq.setComplex('/{:s}/qas/0/rotations/1'.format(qa.id),np.sqrt(2)*np.exp(1j*(phi/180+1/2)*np.pi) )
+        q['isNewExpStart'] = False
+    qa.set_adc_trig_delay(q['bias_start'][s]+q['experiment_length'])
+    return 
+
+def runDevice_rot(qubits):
+    from zilabrad.instrument import qubitServer as qS
+    q = qubits[0]
+    qS.set_microwaveSource(freqList = [q['readout_mw_fc'],q['xy_mw_fc']],
+                    powerList = [q['readout_mw_power'],q['xy_mw_power']])
+
+    wave_AWG = qS.makeSequence_AWG(qubits)
+    wave_readout = qS.makeSequence_readout(qubits)
+
+    data = qS.runDevices(qubits,wave_AWG,wave_readout)
+    return data
+
+
+@expfunc_decorator
 def s21_scan_rot(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phi=0,
     mw_power=None,bias=None,power=None,sb_freq=None,zpa=0.0,amp=None,phase=0,
     name='s21_scan_rot',des='',back=False):
@@ -185,15 +229,6 @@ def s21_scan_rot(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phi=0,
         stats: Number of Samples for one sweep point;
     """
     ## load parameters 
-    from zilabrad.instrument import qubitServer as qS
-
-    def readoutPulse(q):
-        amp = power2amp(q['readout_amp']['dBm'])
-        length = q['readout_len']
-        f1 = waveforms.cosine(amp=amp,phase=q.demod_phase,start=0,freq=q.demod_freq,length=length)
-        f2 = waveforms.sine(amp=1*amp,phase=q.demod_phase,start=0,freq=q.demod_freq,length=length)
-        return f1,f2
-
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
     q = qubits[measure]
     q.channels = dict(q['channels'])
@@ -219,13 +254,6 @@ def s21_scan_rot(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phi=0,
     # create dataset
     dataset = sweeps.prepDataset(sample, name+des, axes, deps,measure=measure,kw=kw)
 
-    qa = qS.qubitContext().servers_qa['qa_1']
-    daq = qa.daq ## qS.qubitContext().servers_daq
-    # qa.waveform_length = -1
-    # daq.setInt('/{:s}/awgs/0/outputs/0/mode'.format(qa.id), 1)
-    # daq.setInt('/{:s}/awgs/0/outputs/1/mode'.format(qa.id), 1)
-    # daq.setInt('/{:s}/qas/0/integration/mode'.format(qa.id), 1)
-    # daq.setDouble('/{:s}/oscs/0/freq'.format(qa.id), q['demod_freq'])
     max_amp = np.max(amp)
 
     def runSweeper(devices,para_list):
@@ -234,11 +262,7 @@ def s21_scan_rot(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phi=0,
             q['readout_amp'] = power*dBm
         else:
             q['readout_amp'] = amp2power(amp)*dBm
-        
         q['readout_mw_fc'] = (freq - q['demod_freq'])*Hz
-
-        # for qb in qubits: ## for sweeping sideband
-            # qb.demod_freq = freq - qb['readout_mw_fc']['Hz']
 
         start = 0   
         start += delay
@@ -249,64 +273,14 @@ def s21_scan_rot(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phi=0,
         q['do_readout'] = True
 
         q['demod_phase'] = phase
-        # q.r = [waveforms.square(amp=power2amp(q['readout_amp']['dBm']),start=0,length=q['readout_len']),
-        #        waveforms.square(amp=power2amp(q['readout_amp']['dBm']),start=0,length=q['readout_len'])]
         q.r = readoutPulse(q)
-        # daq.setDouble('/{:s}/awgs/0/outputs/0/amplitude'.format(qa.id), -1)
 
-        ###########################
-        ## run Qubits Experiment ##
-        ###########################
-        wave_readout = qS.makeSequence_readout([q])
-        qa.send_waveform(waveform=wave_readout)
-        ## Now it is only two microwave sources, in the future, it should be modified
-        qS.set_microwaveSource(freqList = [q['readout_mw_fc'],q['xy_mw_fc']],
-                            powerList = [q['readout_mw_power'],q['xy_mw_power']])
-
-        # only run once in the whole experimental loop
-        if 'isNewExpStart' not in q.keys():
-            print('isNewExpStart, setupDevices')
-            qa.set_result_samples(q['stats'])  
-            qa.set_readout_delay(q['readout_delay'])
-            qa.set_pulse_length(q['readout_len'])
-            qa.set_adc_trig_delay(q['bias_start'][s]+q['experiment_length']) 
-            # ## set demodulate frequency for qubits if you need readout the qubit
-            # f_read = []
-            # for qb in qubits:
-            #     if qb['do_readout']: ##in _q.keys():
-            #         f_read += [qb.demod_freq]
-            # if len(f_read) == 0:
-            #     raise Exception('Must set one readout frequency at least')
-
-            qa.qubit_frequency = [q.demod_freq]*2
-            # # qa.set_all_integration() ## set integration weights
-            # for ch in [0,1]:
-            #     qa.set_qubit_integration_I_Q(ch,q.demod_freq)
-            # qa.set_subscribe(source=2) ## source=2 --> rotation
-            ## Rotation, should set parameter
-            daq.setInt('/{:s}/qas/0/integration/sources/0'.format(qa.id), 0)
-            daq.setInt('/{:s}/qas/0/integration/sources/1'.format(qa.id), 1)
-            daq.setDouble('/{:s}/qas/0/deskew/rows/1/cols/0'.format(qa.id), 0)
-            daq.setDouble('/{:s}/qas/0/deskew/rows/0/cols/1'.format(qa.id), 0)
-            daq.setDouble('/{:s}/qas/0/deskew/rows/1/cols/1'.format(qa.id), 1)
-            daq.setDouble('/{:s}/qas/0/deskew/rows/0/cols/0'.format(qa.id), 1)
-            # daq.setComplex('/{:s}/qas/0/rotations/0'.format(qa.id),np.exp(-1j*phi/180*np.pi) )
-            # daq.setComplex('/{:s}/qas/0/rotations/1'.format(qa.id),np.exp(-1j*(phi/180-1/2)*np.pi) )
-
-            q['isNewExpStart'] = False # actually it can be arbitrary value
-        else:
-            qa.set_adc_trig_delay(q['bias_start'][s]+q['experiment_length'])
-
-        daq.setComplex('/{:s}/qas/0/rotations/0'.format(qa.id),np.sqrt(2)*np.exp(1j*(phi/180)*np.pi) )
-        daq.setComplex('/{:s}/qas/0/rotations/1'.format(qa.id),np.sqrt(2)*np.exp(1j*(phi/180+1/2)*np.pi) )
-        ## run AWG and reaout devices and get data
-        qa.set_subscribe(source=2)
-        qa.awg_open()## download experimental data
-        data = qa.get_data()
-        qa.awg_close()
+        ## run Qubits Experiment
+        setupQA_rot([q])
+        data = runDevice_rot([q])
 
         _d_ = data[0]+1j*data[1]
-        amp = np.abs(np.mean(_d_))/amp ##power2amp(q['readout_amp']['dBm']) ## only relative strength;
+        amp = np.abs(np.mean(_d_))/power2amp(q['readout_amp']['dBm']) ## only relative strength;
         phase = np.angle(np.mean(_d_))
         Iv = np.mean(np.real(_d_))
         Qv = np.mean(np.imag(_d_))
@@ -318,6 +292,75 @@ def s21_scan_rot(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phi=0,
     if back:
         return result_list
         
+@expfunc_decorator
+def IQraw_rot(sample,measure=0,stats=1024,update=False,analyze=False,reps=1,
+    name='IQ raw (rot)',des='',back=True):
+    sample, qubits, Qubits = loadQubits(sample, write_access=True)
+    q = qubits[measure]
+    Qb = Qubits[measure]
+    q.channels = dict(q['channels'])
+
+    for qb in qubits:
+        qb.power_r = power2amp(qb['readout_amp']['dBm'])
+        qb.demod_freq = qb['readout_freq'][Hz]-qb['readout_mw_fc'][Hz]
+    q.sb_freq = (q['f10'] - q['xy_mw_fc'])[Hz]
+
+    ## set some parameters name;
+    axes = [(reps,'reps')]
+    deps = [('Is','|0>',''),('Qs','|0>',''),
+            ('Is','|1>',''),('Qs','|1>','')]
+    kw = {'stats': stats}
+
+    # create dataset
+    dataset = sweeps.prepDataset(sample,name+des,axes,deps,kw=kw,measure=measure)
+
+    def runSweeper(devices,para_list):
+        reps = para_list[0]
+        ## with pi pulse --> |1> ##
+        start = 0
+        q.z = waveforms.square(amp=q.zpa[V],start=start,length=q.piLen[s]+100e-9)
+        start += 50e-9
+        q.xy = [waveforms.cosine(amp=q.piAmp,freq=q.sb_freq,start=start,length=q.piLen[s]),
+                waveforms.sine(amp=q.piAmp,freq=q.sb_freq,start=start,length=q.piLen[s])]
+        start += q.piLen[s] + 50e-9
+        start += 100e-9 
+        start += q['qa_start_delay'][s] 
+        
+        q['experiment_length'] = start
+        
+        for qb in qubits:
+            qb['experiment_length'] = start
+            qb['do_readout'] = True
+            qb.dc = DCbiasPulse(q)
+            qb.r = readoutPulse(q)
+
+        ## run Qubits Experiment
+        setupQA_rot([q])
+        data1 = runDevice_rot([q])
+
+        ## no pi pulse --> |0> ##
+        q.xy = [waveforms.square(amp=0),waveforms.square(amp=0)]
+        ## start to run experiment
+        data0 = runDevice_rot([q])
+
+        ## analyze data and return
+        Is0,Qs0 = data0
+        Is1,Qs1 = data1
+        std0 = np.sqrt(np.var(Is0)+np.var(Qs0))
+        std1 = np.sqrt(np.var(Is1)+np.var(Qs1))
+        print('std |0> = ',std0,'; std |1> = ',std1)
+
+        result = [Is0,Qs0,Is1,Qs1]
+        return result
+
+    collect,raw = True,True
+    axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
+    
+    result_list = RunAllExp(runSweeper,axes_scans,dataset,collect,raw)
+    data = np.asarray(result_list[0])
+    if update:
+        dataProcess._updateIQraw2(data=data,Qb=Qb,dv=None,update=update,analyze=analyze)
+    return data
 
 
 @expfunc_decorator
