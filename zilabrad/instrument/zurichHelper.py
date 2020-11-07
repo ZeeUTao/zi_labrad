@@ -96,7 +96,7 @@ class zurich_qa(object):
         print('%s: Complete Initialization'%self.id)
 
     def reset_zi(self):
-        print('关机重启吧！！')
+        print('You need to manually restart the device')
 
     ####-- device parameters set & get --####
     def set_result_samples(self,sample):
