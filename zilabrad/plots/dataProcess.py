@@ -293,14 +293,14 @@ def fitT1(dh,idx,dv=None,trange=40,data=None,doPlot=True,fig=None,title=''):
     residue = np.mean(data[:,idx2])
     
     def fitfunc(p,t):
-        return p[0]*np.exp(-p[1]*t)+residue
+        return p[0]*np.exp(-t/p[1])+residue
     
     t = data[:,0]
     prob = data[:,idx1]
     
     def errfunc(p):
         return prob-fitfunc(p,t)
-    out = leastsq(errfunc,np.array([max(prob)-min(prob),1/(np.max(t))]),full_output=1)
+    out = leastsq(errfunc,np.array([max(prob)-min(prob),(np.max(t))]),full_output=1)
     p = out[0]
     
     deviation = np.sqrt(np.mean((fitfunc(p,t)-prob)**2))
@@ -316,15 +316,15 @@ def fitT1(dh,idx,dv=None,trange=40,data=None,doPlot=True,fig=None,title=''):
         plt.yticks(size=size)
         plt.ylim(0,1)
         
-    print('probability: %g;   T1: %g us;   Residue: %g' % (p[0], 1.0/p[1], residue) )    
+    print('probability: %g;   T1: %g us;   Residue: %g' % (p[0], p[1], residue) )    
     print('deviation: ', deviation)
     
-    plt.title(title+'T1: %.1f us;' % (1.0/p[1] ),size=size)
+    plt.title(title+'T1: %.1f us;' % (p[1] ),size=size)
     
     if data.shape[1]>=5:
         plt.plot(data[:,0],data[:,-1],'bo')
     plt.tight_layout()
-    return p[0], 1.0/p[1]       
+    return p[0], p[1]       
 
 
 def _updateIQraw2(data,Qb,dv=None,update=True,analyze=False):
@@ -400,16 +400,23 @@ def fitRamsey(dh,idx,dv=None,fingefreq=0.002,sign=0,T1=13306,trange=[0,2],debug=
 
     t1 = data[:,0]*1000
     prob1 = data[:,pro_idx] - mid
+    
+    size,size2 = 15,20
+
 
     plt.plot(t1/1000.,prob1+mid,'bo-')
     xs = np.linspace(t1[0],t1[-1],1000)
     plt.plot(xs/1000.,fitfunc(p,xs)+mid,'k',linewidth=2)
     plt.plot(xs/1000.,fitfunc(p,xs)*np.cos(2*np.pi*fingefreq*xs+sign*np.pi)+mid,'r',linewidth=2)
 
-    plot_label(r'delay $(\mu s)$',r'$P_1$')
-
-    print('T2_gaussian: %.2f ns'%(p[1]))
-    print('T2: %.2f ns'%(0.5*p[1]**2*((0.25/T1**2+4/p[1]**2)**0.5-0.5/T1)))
+    plt.xlabel(r'delay $(\mu s)$',size=size2)
+    plt.ylabel(r'$P(1)$',size=size2)
+    plt.xticks(size=size)
+    plt.yticks(size=size)
+    
+    plt.title('T2: %.1f us;' % (p[1]/1e3),size=size)
+    print('T2_gaussian: %.2f us'%(p[1]/1e3))
+    print('T2: %.2f us'%(0.5*p[1]**2*((0.25/T1**2+4/p[1]**2)**0.5-0.5/T1)/1e3) )
     plt.ylim(0,1)
  
     return p[1]
