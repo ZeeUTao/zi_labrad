@@ -295,34 +295,34 @@ def fitT1(dh,idx,dv=None,trange=40,data=None,doPlot=True,fig=None,title=''):
     def fitfunc(p,t):
         return p[0]*np.exp(-p[1]*t)+residue
     
-    t = data[data[data[:,0]<trange,0]>=0.0,0]*1000
-    prob = data[data[data[:,0]<trange,0]>=0.0,idx1]
+    t = data[:,0]
+    prob = data[:,idx1]
     
     def errfunc(p):
         return prob-fitfunc(p,t)
-    out = leastsq(errfunc,np.array([max(prob)-min(prob),1/(t[-1]/3)]),full_output=1)
+    out = leastsq(errfunc,np.array([max(prob)-min(prob),1/(np.max(t))]),full_output=1)
     p = out[0]
     
     deviation = np.sqrt(np.mean((fitfunc(p,t)-prob)**2))
     size,size2 = 15,20
     if doPlot:
         plt.figure(fig)
-        plt.plot(t/1000.,prob,'bo')
-        xs = np.linspace(t[0],np.max(t),1000)
-        plt.plot(xs/1000.,fitfunc(p,xs),'k',linewidth=2)
+        plt.plot(t,prob,'ro')
+        xs = np.linspace(np.min(t),np.max(t),1000)
+        plt.plot(xs,fitfunc(p,xs),'k',linewidth=2)
         plt.xlabel(r'delay $(\mu s)$',size=size2)
         plt.ylabel(r'$P(1)$',size=size2)
         plt.xticks(size=size)
         plt.yticks(size=size)
         plt.ylim(0,1)
         
-    print('probability: %g;   T1: %g ns;   Residue: %g' % (p[0], 1.0/p[1], residue) )    
+    print('probability: %g;   T1: %g us;   Residue: %g' % (p[0], 1.0/p[1], residue) )    
     print('deviation: ', deviation)
     
-    plt.title(title+'T1: %.1f ns;' % (1.0/p[1]/1e3 ),size=size)
+    plt.title(title+'T1: %.1f us;' % (1.0/p[1] ),size=size)
     
     if data.shape[1]>=5:
-        plt.plot(data[:,0],data[:,-1],'ro')
+        plt.plot(data[:,0],data[:,-1],'bo')
     plt.tight_layout()
     return p[0], 1.0/p[1]       
 
