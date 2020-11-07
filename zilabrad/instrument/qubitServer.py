@@ -246,7 +246,7 @@ def setupDevices(qubits):
         print('isNewExpStart, setupDevices')
 
         ## int: sample number for one sweep point
-        qa.set_result_samples(qubits[0]['stats'])
+        qa.set_result_samples(q_ref['stats'])
         
         ## only related with wiring and devices, delay between QA signal output and demodulation    
         qa.set_readout_delay(q_ref['readout_delay'])
@@ -255,7 +255,7 @@ def setupDevices(qubits):
         qa.set_pulse_length(q_ref['readout_len'])
 
         ## delay between zurich HD and QA
-        qa.set_adc_trig_delay(q_ref['bias_start'][s]+q_ref['experiment_length']) 
+        qa.set_adc_trig_delay(q_ref['bias_start']['s']+q_ref['experiment_length']) 
         
         
         ## set demodulate frequency for qubits if you need readout the qubit
@@ -273,7 +273,7 @@ def setupDevices(qubits):
     else:
         ## delay between zurich HD and QA
         ## for example: in T1 measurement
-        qa.set_adc_trig_delay(q_ref['bias_start'][s]+q_ref['experiment_length'])
+        qa.set_adc_trig_delay(q_ref['bias_start']['s']+q_ref['experiment_length'])
     return
 
 

@@ -13,6 +13,7 @@ import logging # python standard module for logging facility
 import time ## show total time in experiments
 import matplotlib.pyplot as plt ## give picture
 from functools import wraps
+import functools
 import numpy as np 
 from numpy import pi
 import itertools
@@ -422,11 +423,12 @@ def IQraw(sample,measure=0,stats=1024,update=False,analyze=False,reps=1,
         start += 100e-9 
         start += q['qa_start_delay'][s] 
         
-        q['experiment_length'] = start
-        
-
+        for _qb in qubits:
+            _qb['experiment_length'] = start
 
         q['do_readout'] = True
+
+        q.dc = DCbiasPulse(q)
         q.r = readoutPulse(q)
 
         ## start to run experiment
@@ -434,17 +436,13 @@ def IQraw(sample,measure=0,stats=1024,update=False,analyze=False,reps=1,
 
         ## no pi pulse --> |0> ##
         q.xy = [waveforms.square(amp=0),waveforms.square(amp=0)]
-        ## start to run experiment
+
         data0 = runQ(qubits,devices)
-        # print(data0[0].shape)
-        ## analyze data and return
-        Is0 = np.real(data0[measure])
-        Qs0 = np.imag(data0[measure])
-        # print(q['readout_amp'])
-        # print('|0>:',abs(np.mean(data0[measure]))/power2amp(q['readout_amp']['dBm']))
-        Is1 = np.real(data1[measure])
-        Qs1 = np.imag(data1[measure])
-        # print('|1>:',abs(np.mean(data1[measure]))/power2amp(q['readout_amp']['dBm']))
+
+        Is0 = np.real(data0[0])
+        Qs0 = np.imag(data0[0])
+        Is1 = np.real(data1[0])
+        Qs1 = np.imag(data1[0])
 
         result = [Is0,Qs0,Is1,Qs1]
         return result
@@ -479,7 +477,7 @@ def measureFidelity(sample,rep=10,measure=0,stats=1024,update=True,analyze=False
     ## set some parameters name;
     axes = [(reps,'reps')]
 
-    deps_text = lambda idxs: ('prepare |%d>-> measure (|%d>)'%(idxs[0], idxs[1]),'','')
+    deps_text = lambda idxs: ('measure |%d>, prepare (|%d>)'%(idxs[0], idxs[1]),'','')
     deps = list(map(deps_text,itertools.product([0,1],[0,1]) ) )
 
     kw = {'stats': stats}
@@ -501,7 +499,8 @@ def measureFidelity(sample,rep=10,measure=0,stats=1024,update=True,analyze=False
         start += 100e-9 
         start += q['qa_start_delay'][s] 
         
-        q['experiment_length'] = start
+        for _qb in qubits:
+            _qb['experiment_length'] = start
         set_qubitsDC(qubits,q['experiment_length'])
         q['do_readout'] = True
         q.r = readoutPulse(q)
@@ -521,7 +520,7 @@ def measureFidelity(sample,rep=10,measure=0,stats=1024,update=True,analyze=False
         prob1 = tunneling([q],[data1],level=2)
         
         
-        return [prob0[0], prob0[1],prob1[0], prob1[1]]
+        return [prob0[0], prob1[0],prob0[1], prob1[1]]
 
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
     results = RunAllExp(runSweeper,axes_scans,dataset)
@@ -647,7 +646,7 @@ def ramsey(sample,measure=0,stats=1024,delay=ar[0:10:0.4,us],
           'fringeFreq': fringeFreq}
 
     # create dataset
-    dataset = sweeps.prepDataset(sample, name+des, axes, deps,kw=kw)
+    dataset = sweeps.prepDataset(sample, name+des, axes, deps,kw=kw,measure=measure)
     
 
     q_copy = q.copy()
@@ -837,6 +836,43 @@ def deps_Nqbitpopu(nq: int,qLevel: int = 2):
     return deps
 
 @expfunc_decorator
+def Nqubit_state(sample,reps=10,measure=[0,1],states=[0,0],name='Nqubit_state',des=''):
+    sample, qubits, Qubits = loadQubits(sample, write_access=True)
+    reps = np.arange(reps)
+    prep_Nqbit(qubits)
+    axes = [(reps,'reps')]
+    labels = gene_binary(len(measure),2)
+
+    states_str = functools.reduce(lambda x,y: str(x)+str(y),states)
+    get_dep = lambda x: ('','measure '+str(x),'')
+    deps = list(map(get_dep,labels))
+
+    q_ref = qubits[0]
+    kw={}
+    kw['states'] = states
+    dataset = sweeps.prepDataset(sample, name+des, axes, deps,kw=kw)
+
+    def runSweeper(devices,para_list):
+        start = 0.
+        for i,_qb in enumerate(qubits):
+            _qb.xy = XYnothing(_qb)
+            addXYgate(_qb,start,np.pi*states[i],0.)
+
+        start += max( map(lambda q:q['piLen']['s'],qubits)) + 50e-9
+        for _q in qubits:
+            _q.r = readoutPulse(_q)
+            _q['experiment_length'] = start
+            _q['do_readout'] = True
+
+        set_qubitsDC(qubits,q_ref['experiment_length'])
+        data = runQ(qubits,devices)
+        prob = tunneling(qubits,data,level=2)
+        return prob
+    axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
+    result_list = RunAllExp(runSweeper,axes_scans,dataset)
+    return
+
+@expfunc_decorator
 def qqiswap(sample,measure=0,delay=20*ns,zpa=None,name='iswap',des=''):
     """ 
         sample: select experimental parameter from registry;
@@ -847,6 +883,7 @@ def qqiswap(sample,measure=0,delay=20*ns,zpa=None,name='iswap',des=''):
     prep_Nqbit(qubits)
 
     q = qubits[measure]
+    q_ref = qubits[0]
     if zpa == None:
         zpa = q['zpa']
 
@@ -879,7 +916,7 @@ def qqiswap(sample,measure=0,delay=20*ns,zpa=None,name='iswap',des=''):
             _q['experiment_length'] = start
             _q['do_readout'] = True
 
-        set_qubitsDC(qubits,q['experiment_length'])
+        set_qubitsDC(qubits,q_ref['experiment_length'])
 
         data = runQ(qubits,devices)
         prob = tunneling(qubits,data,level=2)
