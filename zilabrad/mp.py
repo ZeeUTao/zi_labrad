@@ -39,7 +39,7 @@ from labrad.units import Unit,Value
 import labrad
 _unitSpace = ('V','mV','us','ns','s','GHz','MHz','kHz','Hz','dBm','rad','None')
 V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l  = [Unit(s) for s in _unitSpace]
-ar = sweeptools.r
+ar = sweeptools.RangeCreator()
 
 datahelper = datahelp()
 
@@ -503,7 +503,6 @@ def measureFidelity(sample,rep=10,measure=0,stats=1024,update=True,analyze=False
         
         q['experiment_length'] = start
         set_qubitsDC(qubits,q['experiment_length'])
-
         q['do_readout'] = True
         q.r = readoutPulse(q)
 
@@ -551,8 +550,10 @@ def T1_visibility(sample,measure=0,stats=1024,delay=0.8*us,
     q.power_r = power2amp(q['readout_amp']['dBm'])
     q.demod_freq = q['readout_freq'][Hz]-q['readout_mw_fc'][Hz]
     q.sb_freq = (q['f10'] - q['xy_mw_fc'])[Hz]
+
+    
     for qb in qubits:
-        qb.awgs_pulse_len += np.max(delay) ## add max length of hd waveforms 
+        qb['awgs_pulse_len'] += np.max(delay) ## add max length of hd waveforms 
 
     ## set some parameters name;
     axes = [(bias,'bias'),(zpa,'zpa'),(delay,'delay')]
@@ -585,21 +586,18 @@ def T1_visibility(sample,measure=0,stats=1024,delay=0.8*us,
         start += q.piLen['s'] + delay
         start += q['qa_start_delay']['s']
         
+        q['experiment_length'] = start
+        set_qubitsDC(qubits,q['experiment_length'])
         q['do_readout'] = True
+        q.r = readoutPulse(q)
 
-        for qb in qubits:
-            qb['experiment_length'] = start
-            qb.dc = DCbiasPulse(q)
-        
-        q.r = readoutPulse(q)    
-        
         ## start to run experiment
         data1 = runQ([q],devices)
         ## analyze data and return
-        for _d_ in data1:
-            amp1 = np.mean(np.abs(_d_))/q.power_r ## unit: dB; only relative strength;
-            phase1 = np.mean(np.angle(_d_))
-            prob1 = tunneling([q],[_d_],level=2)
+        _d_ = data1[0]
+        amp1 = np.mean(np.abs(_d_))/q.power_r ## unit: dB; only relative strength;
+        phase1 = np.mean(np.angle(_d_))
+        prob1 = tunneling([q],[_d_],level=2)
         
         ### ----- without pi pulse ----- ###
         q.xy = XYnothing(q)
@@ -643,7 +641,7 @@ def ramsey(sample,measure=0,stats=1024,delay=ar[0:10:0.4,us],
     ## set some parameters name;
     axes = [(repetition, 'repetition'),(delay,'delay'),(df,'df'),(fringeFreq,'fringeFreq'),(PHASE,'PHASE')]
     deps = [('Amplitude','s21 for','a.u.'),('Phase','s21 for','rad'),
-            ('I','',''),('Q','',''),('prob |0>','',''),('prob |1>','','')]
+            ('I','',''),('Q','',''),('prob |1>','','')]
 
     kw = {'stats': stats,
           'fringeFreq': fringeFreq}
@@ -669,30 +667,25 @@ def ramsey(sample,measure=0,stats=1024,delay=ar[0:10:0.4,us],
         addXYgate(q,start,theta=np.pi/2.,phi=PHASE+fringeFreq*delay*2.*np.pi+start*(q['f10']['Hz'])*2.*np.pi)
         
         start += q.piLen[s] + 50e-9
+        start += 100e-9 + q['qa_start_delay'][s] 
 
-        start += 100e-9
-        start += q['qa_start_delay'][s] 
-        q.r = readoutPulse(q)
+        q['experiment_length'] = start
+        set_qubitsDC(qubits,q['experiment_length'])
         q['do_readout'] = True
-        
-        for qb in qubits:
-            qb['experiment_length'] = start
-            qb.dc = DCbiasPulse(q)
-
-
+        q.r = readoutPulse(q)
 
         ## start to run experiment
         data = runQ([q],devices)
         ## analyze data and return
-        for _d_ in data:
-            amp = np.abs(np.mean(_d_))/q.power_r ## unit: dB; only relative strength;
-            phase = np.angle(np.mean(_d_))
-            Iv = np.mean(np.real(_d_))
-            Qv = np.mean(np.imag(_d_))
-            prob = tunneling([q],[_d_],level=2)
+        _d_ = data[0]
+        amp = np.abs(np.mean(_d_))/q.power_r ## unit: dB; only relative strength;
+        phase = np.angle(np.mean(_d_))
+        Iv = np.mean(np.real(_d_))
+        Qv = np.mean(np.imag(_d_))
+        prob = tunneling([q],[_d_],level=2)
 
         ## multiply channel should unfold to a list for return result
-        result = [amp,phase,Iv,Qv,prob[0],prob[1]]
+        result = [amp,phase,Iv,Qv,prob[1]]
         return result
 
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
@@ -770,10 +763,10 @@ def s21_dispersiveShift(sample,measure=0,stats=1024,freq=ar[6.4:6.5:0.02,GHz],de
         start += q['qa_start_delay'][s]
         
         q['experiment_length'] = start
+        set_qubitsDC(qubits,q['experiment_length'])
         q['do_readout'] = True
-        
-        q.dc = DCbiasPulse(q)
         q.r = readoutPulse(q)
+
         
         ## start to run experiment
         data1 = runQ([q],devices)
@@ -787,16 +780,17 @@ def s21_dispersiveShift(sample,measure=0,stats=1024,freq=ar[6.4:6.5:0.02,GHz],de
         data0 = runQ([q],devices)
 
         ## analyze data and return
-        for _d_ in data0:
-            amp0 = np.abs(np.mean(_d_))/q.power_r ## unit: dB; only relative strength;
-            phase0 = np.angle(np.mean(_d_))
-            Iv0 = np.mean(np.real(_d_))
-            Qv0 = np.mean(np.imag(_d_))
-        for _d_ in data1:
-            amp1 = np.abs(np.mean(_d_))/q.power_r ## unit: dB; only relative strength;
-            phase1 = np.angle(np.mean(_d_))
-            Iv1 = np.mean(np.real(_d_))
-            Qv1 = np.mean(np.imag(_d_))
+        _d_ = data0[0]
+        amp0 = np.abs(np.mean(_d_))/q.power_r ## unit: dB; only relative strength;
+        phase0 = np.angle(np.mean(_d_))
+        Iv0 = np.mean(np.real(_d_))
+        Qv0 = np.mean(np.imag(_d_))
+
+        _d_ = data1[0]
+        amp1 = np.abs(np.mean(_d_))/q.power_r ## unit: dB; only relative strength;
+        phase1 = np.angle(np.mean(_d_))
+        Iv1 = np.mean(np.real(_d_))
+        Qv1 = np.mean(np.imag(_d_))
         ## multiply channel should unfold to a list for return result
         result = [amp0,phase0,Iv0,Qv0]
         result += [amp1,phase1,Iv1,Qv1]
@@ -806,7 +800,7 @@ def s21_dispersiveShift(sample,measure=0,stats=1024,freq=ar[6.4:6.5:0.02,GHz],de
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
     result_list = RunAllExp(runSweeper,axes_scans,dataset)
     if back:
-        return result_list,q
+        return result_list
 
 
 ##################
@@ -826,13 +820,15 @@ def gene_binary(qNum,qLevel=2):
 def prep_Nqbit(qubits):
     for _q in qubits:
         _q.channels = dict(_q['channels'])
-        _q.power_r = power2amp(_q['readout_amp']['dBm'])
+        # _q.power_r = power2amp(_q['readout_amp']['dBm'])
         _q.demod_freq = _q['readout_freq'][Hz]-_q['readout_mw_fc'][Hz]
         _q.sb_freq = (_q['f10'] - _q['xy_mw_fc'])[Hz]
 
-        _q.xy = [waveforms.NOTHING,waveforms.NOTHING]
-        _q.z = waveforms.NOTHING
+        # _q.xy = [waveforms.NOTHING,waveforms.NOTHING]
+        # _q.z = waveforms.NOTHING
     return
+
+
 def deps_Nqbitpopu(nq: int,qLevel: int = 2):           
     labels = gene_binary(nq,qLevel)
     deps = []
@@ -864,35 +860,30 @@ def qqiswap(sample,measure=0,delay=20*ns,zpa=None,name='iswap',des=''):
     def runSweeper(devices,para_list):
         delay,zpa = para_list
 
-        start = 0
+        start = 0.
 
-        start += 50e-9
-        piamp = q['piAmp']
-        q.xy = [waveforms.cosine(amp=piamp,freq=q.sb_freq,start=start,length=q.piLen[s]),
-                waveforms.sine(amp=piamp,freq=q.sb_freq,start=start,length=q.piLen[s])]
+        q.xy = XYnothing(q)
+        addXYgate(q,start,np.pi,0.)
 
-        start += q.piLen[s] + 50e-9
+        start += q['piLen']['s'] + 50e-9
 
         q.z = waveforms.square(amp=zpa,start=start,length=q.piLen[s]+100e-9)
 
-        start += 100e-9 ## 额外添加的读取间隔,避免hd下降沿对读取部分的影响;
-        start += q['qa_start_delay'][s] ## 修正hd与qa之间trigger导致的时序不准,正确启动QA pulse和demod窗口
+        start += 100e-9 
+        start += q['qa_start_delay'][s]
         
         
-        
+
         for _q in qubits:
             _q.r = readoutPulse(_q)
             _q['experiment_length'] = start
             _q['do_readout'] = True
 
-        ## start to run experiment
+        set_qubitsDC(qubits,q['experiment_length'])
+
         data = runQ(qubits,devices)
-        print(np.asarray(data).shape)
-        ## analyze data and return
         prob = tunneling(qubits,data,level=2)
-        ## multiply channel should unfold to a list for return result
-        result = prob
-        return result
+        return prob
         
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
     result_list = RunAllExp(runSweeper,axes_scans,dataset)
@@ -914,8 +905,12 @@ def qqiswap(sample,measure=0,delay=20*ns,zpa=None,name='iswap',des=''):
 #### ----- dataprocess tools ----- ####
 
 def tunneling(qubits,data,level=2):
-    ## generated to N 20190618 -- ZiyuTao
-    # q1 q2 q3  .... 
+    """ get probability for 1,2,3...N qubits with level (2,3,4,....)
+    Args:
+        qubits (dict): qubit information in registry
+        data (list): list of IQ data (array of complex number) for N qubits
+        level (int): level of qubit
+    """
     qNum = len(qubits)
     counts_num = len(data[0])
     binary_count = np.zeros((counts_num),dtype=float)
