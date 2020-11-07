@@ -235,31 +235,6 @@ def makeSequence_AWG(qubits):
 
 
 
-def _mpAwg_init(qubits:list):
-    """
-    prepare and Returns waveforms
-    Args:
-        qubits (list) -> [q (dict)]: contains value as parameter
-        qa (object): zurich_qa instance
-        hd (object): zurich_hd instance
-    
-    Returns:
-        w_qa (object): waveform instance for qa
-        w_hd (object): waveform instance for hd
-
-    TODO: better way to generate w_qa, w_hd
-    try to create features in the exsiting class but not create a new function
-    """
-    qContext = qubitContext()
-    qa = qContext.servers_qa['qa_1']
-
-    q_ref = qubits[0] ## the first qubit as master
-
-
-
-    ### ----- finish ----- ###
-    return 
-    
     
 def setupDevices(qubits):
     q_ref = qubits[0]
@@ -269,8 +244,7 @@ def setupDevices(qubits):
     
     if 'isNewExpStart' not in q_ref:
         print('isNewExpStart, setupDevices')
-        _mpAwg_init(qubits)
-        
+
         ## int: sample number for one sweep point
         qa.set_result_samples(qubits[0]['stats'])
         
