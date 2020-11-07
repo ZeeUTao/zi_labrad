@@ -2,9 +2,7 @@
 """Batched commands for the daily running.
 
 We always use in ipython3： run BatchRun
-It will bringup the devices (object), and store in locals()
-
-To reload mp, you can call 'reload_mp', which fed 'devices' to mp.exp_devices
+It will bringup the devices (object), and store some daily commands
 """
 
 
@@ -22,7 +20,7 @@ from zilabrad.instrument import waveforms
 import zilabrad.instrument.qubitServer as qubitServer
 from zilabrad.instrument.QubitContext import qubitContext
 from zilabrad.instrument.QubitContext import update_session
-from zilabrad import mp
+from zilabrad import multiplex as mp
 from zilabrad.plots import dataProcess as dp
 
 
