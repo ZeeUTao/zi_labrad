@@ -8,7 +8,6 @@ It will bringup the devices (object), and store some daily commands
 
 
 from importlib import reload
-import configparser
 import os
 import numpy as np
 from zilabrad.pyle.registry import RegistryWrapper
