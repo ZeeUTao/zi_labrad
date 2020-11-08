@@ -111,18 +111,28 @@ def expfunc_decorator(func):
     """
     @wraps(func)
     def wrapper(*args, **kwargs):
-        logger = logging.getLogger(func.__name__)
-        
         # check_device()
-        _t0_ = time.time()
-
         start_ts = time.time()
-        result = func(*args, **kwargs)
-        stop_device() ## stop all device running
-        logger.info('use time (s): %.2f '%(time.time()-_t0_))
-        return result
+        try:
+            result = func(*args, **kwargs)
+        except KeyboardInterrupt:
+            # stop in the middle
+            print('KeyboardInterrupt')
+            print('stop_device')
+            timeNow = time.strftime("%Y-%m-%d %X",time.localtime())
+            print(timeNow)
+            stop_device() ## stop all device running
+            
+            return
+        else:
+            # finish in the end
+            stop_device()
+            timeNow = time.strftime("%Y-%m-%d %X",time.localtime())
+            print(timeNow)
+            return result
     return wrapper
-        
+
+       
 def power2amp(power):
     """ 
     convert 'dBm' to 'V' for 50 Ohm (only value)
