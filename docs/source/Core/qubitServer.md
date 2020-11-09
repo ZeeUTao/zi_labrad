@@ -20,6 +20,23 @@
 
 
 
+## Key Parameters
+
+- `awgs_pulse_len` 
+
+  the maximum length of AWG pulse. 
+
+  Example: when you implement T1 measurement, 
+
+  ```python
+  for qb in qubits:
+  	qb['awgs_pulse_len'] += np.max(delay)
+  ```
+
+  otherwise, the AWG (Zurich HD) will not prepare the pulse with the length exceeding our default maximum value (stored in Registry).
+
+
+
 ## Cost of time
 
 Since more devices can operate simultaneously, *setup devices, upload setting and wait for data* will not be too long and only related to the ports of one devices (8 for Zurich HD).
