@@ -248,8 +248,7 @@ def setup_wiring(__wiring_mode__=None):
     qContext = qubitContext()
     if __wiring_mode__ == None:
         __wiring_mode__ = qContext.wiring
-    qa_mode = __wiring_mode__['qa_1'] ## qaSource
-    hd_mode = __wiring_mode__['hd_1'] ## awg grouping
+    
     for name,mode in __wiring_mode__.items():
         if 'qa' in name:
             qContext.servers_qa[name].set_qaSource_mode(mode)
@@ -264,9 +263,11 @@ def setupDevices(qubits):
     qContext = qubitContext()
     qa = qContext.servers_qa['qa_1']
     
+    
     if 'isNewExpStart' not in q_ref:
         print('isNewExpStart, setupDevices')
-
+        qContext.refresh()
+        setup_wiring()
         ## int: sample number for one sweep point
         qa.set_result_samples(q_ref['stats'])
         
@@ -320,8 +321,8 @@ def runDevices(qubits,wave_AWG,wave_readout):
     # t0=time.time()
     for dev_id,waveforms in wave_dict.items():
         for awg in range(4): ## default 4 awgs in every zi hdawgs
-            port = [p for p in waveforms[awg].keys()]
-            wave = [w for w in waveforms[awg].values()]
+            port = list(waveforms[awg].keys())
+            wave = list(waveforms[awg].values())
             # print(port)
             if len(wave) == 1 or len(wave) == 2:
                 hds[dev_id].send_waveform(waveform=wave,awg_index=awg,port=port)
@@ -346,13 +347,13 @@ def runDevices(qubits,wave_AWG,wave_readout):
     _data = qa.get_data()
     # print('get_data use %.3f s'%(time.time()-t0))
     
-    if qa.source != 7: ## single channels
+    if qa.source == 7: ## single channels
         return _data
     else: ## double channels
-        ks = range(int(n_ch/2))
-        double_channel_data = lambda k: _data[2*k]+1j*_data[2*k+1]
-        data = list(map(double_channel_data,ks))
-        return data
+        ks = range(int(len(_data)/2))
+        get_doubleChannel = lambda k: _data[2*k]+1j*_data[2*k+1]
+        data_doubleChannel = list(map(get_doubleChannel,ks))
+        return data_doubleChannel
             
     
 
