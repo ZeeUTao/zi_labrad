@@ -235,6 +235,28 @@ def makeSequence_AWG(qubits):
 
 
 
+def setup_wiring(__wiring_mode__=None):
+    '''
+    QA mode: 
+        2 --> Rotation; 
+        7 --> Integration; 
+    HD mode: 
+        0 --> 4*2 awgs; 
+        1 --> 2*4 awgs; 
+        2 --> 1*8 awgs; 
+    '''
+    qContext = qubitContext()
+    if __wiring_mode__ == None:
+        __wiring_mode__ = qContext.wiring
+    qa_mode = __wiring_mode__['qa_1'] ## qaSource
+    hd_mode = __wiring_mode__['hd_1'] ## awg grouping
+    for name,mode in __wiring_mode__.items():
+        if 'qa' in name:
+            qContext.servers_qa[name].set_qaSource_mode(mode)
+        elif 'hd' in name:
+            qContext.servers_hd[name].awg_grouping(mode)
+        else:
+            print('Unknown name (%r) with mode(%r)'%(name,mode))
     
 def setupDevices(qubits):
     q_ref = qubits[0]
@@ -321,9 +343,19 @@ def runDevices(qubits,wave_AWG,wave_readout):
                 hd.awg_open(awgs_index=[k])
     qa.awg_open()## download experimental data
     # t0=time.time()
-    data = qa.get_data()
+    _data = qa.get_data()
     # print('get_data use %.3f s'%(time.time()-t0))
-    return data
+    
+    if qa.source != 7: ## single channels
+        return _data
+    else: ## double channels
+        ks = range(int(n_ch/2))
+        double_channel_data = lambda k: _data[2*k]+1j*_data[2*k+1]
+        data = list(map(double_channel_data,ks))
+        return data
+            
+    
+
 
 
 def awgWave_dict(ports,waves):
