@@ -9,17 +9,19 @@ from numpy import pi
 from zilabrad.util import singleton, singletonMany
 from zilabrad.instrument.waveforms import convertUnits
 
-
-def get_awg_program(sample_rate: int, number_wave: int):
+def get_awg_program1(**kwargs):
     """
     Example:
-    awg_program = get_awg_program(int(1.8e9), 2)
+    awg_program = get_awg_program(sample_rate=int(1.8e9), number_port=2)
     """
+    sample_rate = kwargs.get("sample_rate")
+    number_port = kwargs.get("number_port")
+
     # create waveform
 
     wave_define_string = ""
     wave_play_string = ""
-    for i in range(number_wave):
+    for i in range(number_port):
         wave_define_string += f"wave w{i+1} = zeros({wave_length})"
         wave_play_string += (',' + str(i+1) + ',w'+str(i+1))
     wave_play_string = wave_play_string[1:]
@@ -53,6 +55,7 @@ AWG_MONITOR_TRIGGER);// start demodulate
     return awg_program
 
 
+    
 class qaSource(enum.Enum):
     """ Constants (int) for selecting result logging source """
     TRANS = 0
@@ -294,11 +297,11 @@ class zurich_qa(object):
         self.daq.setInt('/{:s}/qas/0/result/enable'.format(self.id), 0)
 
     # -- AWGs waveform
-    def awg_builder(self, waveform=[[0], [0]], awg_index=0):
+    def _awg_builder(self, number_port=2, awg_index=0):
         """ Build waveforms sequencer. Then compile and send it to devices.
         """
         # create default zeros waveform
-        awg_program = get_awg_program(self.FS, len(waveform))
+        awg_program = get_awg_program(sample_rate=int(self.FS), number_port=number_port)
 
         self.awg_upload_string(awg_program, awg_index=awg_index)
         self.update_pulse_length()  # updata self.waveform_lenght
@@ -365,7 +368,7 @@ class zurich_qa(object):
                     print('Bulid [%s-AWG0] Sequencer (len=%r > %r)' %
                           (self.id, len(waveform[0]), self.waveform_length))
                     t0 = time.time()
-                    self.awg_builder(waveform=waveform, awg_index=0)
+                    self._awg_builder(number_port=len(waveform), awg_index=0)
                     print('[%s-AWG0] builder: %.3f s' %
                           (self.id, time.time()-t0))
                     _n_ = self.waveform_length - len(waveform[0])
@@ -374,12 +377,12 @@ class zurich_qa(object):
                             np.hstack((wf, np.zeros(_n_))) for wf in waveform]
                         self.reload_waveform(waveform=waveform_add)
                     else:
-                        raise Exception('Error awg_builder or reload_waveform')
+                        raise Exception('Error _awg_builder or reload_waveform')
         else:
             print('Bulid [%s-AWG0] Sequencer (len=%r > %r)' %
                   (self.id, len(waveform[0]), self.waveform_length))
             t0 = time.time()
-            self.awg_builder(waveform=waveform, awg_index=0)
+            self._awg_builder(number_port=len(waveform), awg_index=0)
             print('[%s-AWG0] builder: %.3f s' % (self.id, time.time()-t0))
             _n_ = self.waveform_length - len(waveform[0])
             if _n_ >= 0:
@@ -387,7 +390,7 @@ class zurich_qa(object):
                                 for wf in waveform]
                 self.reload_waveform(waveform=waveform_add)
             else:
-                raise Exception('Error awg_builder or reload_waveform')
+                raise Exception('Error _awg_builder or reload_waveform')
 
     def reload_waveform(self, waveform, awg_index=0, index=0):
         """ waveform: (numpy.array) one/two waves with unit amplitude.
