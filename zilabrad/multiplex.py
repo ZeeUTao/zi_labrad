@@ -238,12 +238,11 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phase=0,
         
         data = runQ([q],devices)
 
-        for _d_ in data:
-            amp = np.abs(np.mean(_d_))/q.power_r
-            phase = np.angle(np.mean(_d_))
-            Iv = np.real(np.mean(_d_))
-            Qv = np.imag(np.mean(_d_))
-            #break ## only read the first channel
+        _d_ = data[0]
+        amp = np.abs(np.mean(_d_))/q.power_r
+        phase = np.angle(np.mean(_d_))
+        Iv = np.real(np.mean(_d_))
+        Qv = np.imag(np.mean(_d_))
         return [amp,phase,Iv,Qv] 
 
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
@@ -254,7 +253,7 @@ def s21_scan(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,phase=0,
 
 
 @expfunc_decorator
-def spectroscopy(sample,measure=0,stats=1024,freq=6.0*GHz,specLen=1*us,specAmp=0.05,sb_freq=None,
+def spectroscopy(sample,measure=0,stats=1024,freq=None,specLen=1*us,specAmp=0.05,sb_freq=None,
     bias=None,zpa=None,
     name='spectroscopy',des='',back=False):
     """ 
@@ -265,60 +264,49 @@ def spectroscopy(sample,measure=0,stats=1024,freq=6.0*GHz,specLen=1*us,specAmp=0
     q = qubits[measure]
     q.channels = dict(q['channels'])
     q.stats = stats
-
+    
+    if freq == None: freq = q['f10']
     if bias == None: bias = q['bias']
     if zpa == None: zpa = q['zpa']
     if sb_freq == None: sb_freq = (q['f10'] - q['xy_mw_fc'])
-
+    
     q.power_r = power2amp(q['readout_amp']['dBm'])
     q.demod_freq = (q['readout_freq']-q['readout_mw_fc'])[Hz]
 
     ## set some parameters name;
-    axes = [(freq,'freq'),(specAmp,'specAmp'),(bias,'bias'),(zpa,'zpa')]
-    deps = [('Amplitude','s21 for','a.u.'),('Phase','s21 for','rad'),
-            ('I','',''),('Q','',''),
-            ('probability |0>','',''),
-            ('probability |1>','','')]
+    axes = [(freq,'freq'),(specAmp,'specAmp'),(specLen,'specLen'),(bias,'bias'),(zpa,'zpa')]
+    deps = dependents_1q()
     kw = {'stats': stats,'sb_freq': sb_freq}
-
+    
+    for qb in qubits:
+        qb['awgs_pulse_len'] += np.max(specLen) ## add max length of hd waveforms 
     # create dataset
     dataset = sweeps.prepDataset(sample, name+des, axes,deps,kw=kw,measure=measure)
 
     def runSweeper(devices,para_list):
-        freq,specAmp,bias,zpa = para_list
+        freq,specAmp,specLen,bias,zpa = para_list
         
         q['xy_mw_fc'] = freq*Hz-sb_freq
 
         start = 0
-        q.z = waveforms.square(amp=zpa,start=start,length=q.piLen[s]+100e-9)
+        q.z = waveforms.square(amp=zpa,start=start,length=specLen+100e-9)
         start += 50e-9
-        q.xy = [waveforms.cosine(amp=specAmp,freq=sb_freq['Hz'],start=start,end=start+specLen['s']),
-                waveforms.sine(amp=specAmp,freq=sb_freq['Hz'],start=start,end=start+specLen['s'])]
-        start += q.piLen[s] + 50e-9
+        q.xy = [waveforms.cosine(amp=specAmp,freq=sb_freq['Hz'],start=start,length=specLen),
+                waveforms.sine(amp=specAmp,freq=sb_freq['Hz'],start=start,length=specLen)]
+        start += specLen + 50e-9
         q['bias'] = bias
 
         start += 100e-9
         start += q['qa_start_delay']['s']
 
-        for _qb in qubits:
-            _qb['experiment_length'] = start
-            _qb.dc = DCbiasPulse(_qb)
-
+        q['experiment_length'] = start
         q['do_readout'] = True
+
+        q.dc = DCbiasPulse(q)
         q.r = readoutPulse(q)
         
-
         data = runQ([q],devices)
-
-        _d_ = data[0]
-        amp = np.abs(np.mean(_d_))/q.power_r
-        phase = np.angle(np.mean(_d_))
-        Iv = np.mean(np.real(_d_))
-        Qv = np.mean(np.imag(_d_))
-        prob = tunneling([q],[_d_],level=2)
-        ## multiply channel should unfold to a list for return result
-        result = [amp,phase,Iv,Qv,prob[0],prob[1]]
-        return result
+        return processData_1q(data,q)
 
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
     result_list = RunAllExp(runSweeper,axes_scans,dataset)
@@ -349,11 +337,12 @@ def rabihigh(sample,measure=0,stats=1024,piamp=0.05,piLen=None,df=0*MHz,
 
     ## set some parameters name;
     axes = [(bias,'bias'),(zpa,'zpa'),(df,'df'),(piamp,'piamp'),(piLen,'piLen')]
-    deps = [('Amplitude','s21 for','a.u.'),('Phase','s21 for','rad'),
-            ('I','',''),('Q','',''),
-            ('probability','|1>','')]
+    deps = dependents_1q()
     kw = {'stats': stats}
-
+    
+    for qb in qubits:
+        qb['awgs_pulse_len'] += np.max(piLen) ## add max length of hd waveforms 
+        
     # create dataset
     dataset = sweeps.prepDataset(sample,name+des,axes, deps,kw=kw,measure=measure)
 
@@ -381,17 +370,7 @@ def rabihigh(sample,measure=0,stats=1024,piamp=0.05,piLen=None,df=0*MHz,
 
         ## start to run experiment
         data = runQ([q],devices)
-
-        ## analyze data and return
-        _d_ = data[0]
-        amp = np.abs(np.mean(_d_))/q.power_r ## only relative strength;
-        phase = np.angle(np.mean(_d_))
-        Iv = np.mean(np.real(_d_))
-        Qv = np.mean(np.imag(_d_))
-        prob = tunneling([q],[_d_],level=2)
-        ## multiply channel should unfold to a list for return result
-        result = [amp,phase,Iv,Qv,prob[1]]
-        return result
+        return processData_1q(data,q)
         
     axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
     result_list = RunAllExp(runSweeper,axes_scans,dataset)
@@ -989,8 +968,27 @@ def tunneling(qubits,data,level=2):
     prob = res_store/counts_num
     return prob
 
-
-
+def dependents_1q():
+    deps = [('Amp','s21 for','a.u.'),('Phase','s21 for','rad'),
+            ('I','',''),('Q','',''),
+            ('pro','|1>','')]
+    return deps
+    
+    
+def processData_1q(data,q):
+    """
+    process single qubit IQ data into the daily used version
+    """
+    ## analyze data and return
+    _d_ = data[0]
+    amp = np.abs(np.mean(_d_))/q['readout_amp']['dBm'] ## only relative strength;
+    phase = np.angle(np.mean(_d_))
+    Iv = np.real(np.mean(_d_))
+    Qv = np.imag(np.mean(_d_))
+    prob = tunneling([q],[_d_],level=2)
+    ## multiply channel should unfold to a list for return result
+    result = [amp,phase,Iv,Qv,prob[1]]
+    return result
 
 #----------- dataprocess tools END -----------#
 
