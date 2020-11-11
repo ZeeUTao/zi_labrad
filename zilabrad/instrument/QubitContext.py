@@ -59,7 +59,8 @@ class qubitContext(object):
         
         self.__isNewExpStart = True
         
-        self.deviceInfo = self.loadInfo(paths=['Servers','devices']) 
+        self.deviceInfo = self.loadInfo(paths=['Servers','devices'])
+        self.wiring = dict(self.deviceInfo.get('wiring'))
         self.servers_qa = self.get_servers('ziQA_id')
         self.servers_hd = self.get_servers('ziHD_id')
         self.servers_microwave = self.get_microwaveServer()
@@ -155,7 +156,8 @@ class qubitContext(object):
             
             
     def refresh(self):
-        self.deviceInfo = self.loadInfo(paths=['Servers','devices']) 
+        self.deviceInfo = self.loadInfo(paths=['Servers','devices'])
+        self.wiring = dict(self.deviceInfo.get('wiring'))
         self.servers_qa = self.get_servers('ziQA_id')
         self.servers_hd = self.get_servers('ziHD_id')
         self.servers_microwave = self.get_microwaveServer()

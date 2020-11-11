@@ -235,6 +235,27 @@ def makeSequence_AWG(qubits):
 
 
 
+def setup_wiring(__wiring_mode__=None):
+    '''
+    QA mode: 
+        2 --> Rotation; 
+        7 --> Integration; 
+    HD mode: 
+        0 --> 4*2 awgs; 
+        1 --> 2*4 awgs; 
+        2 --> 1*8 awgs; 
+    '''
+    qContext = qubitContext()
+    if __wiring_mode__ == None:
+        __wiring_mode__ = qContext.wiring
+    
+    for name,mode in __wiring_mode__.items():
+        if 'qa' in name:
+            qContext.servers_qa[name].set_qaSource_mode(mode)
+        elif 'hd' in name:
+            qContext.servers_hd[name].awg_grouping(mode)
+        else:
+            print('Unknown name (%r) with mode(%r)'%(name,mode))
     
 def setupDevices(qubits):
     q_ref = qubits[0]
@@ -242,9 +263,11 @@ def setupDevices(qubits):
     qContext = qubitContext()
     qa = qContext.servers_qa['qa_1']
     
+    
     if 'isNewExpStart' not in q_ref:
         print('isNewExpStart, setupDevices')
-
+        qContext.refresh()
+        setup_wiring()
         ## int: sample number for one sweep point
         qa.set_result_samples(q_ref['stats'])
         
@@ -298,8 +321,8 @@ def runDevices(qubits,wave_AWG,wave_readout):
     # t0=time.time()
     for dev_id,waveforms in wave_dict.items():
         for awg in range(4): ## default 4 awgs in every zi hdawgs
-            port = [p for p in waveforms[awg].keys()]
-            wave = [w for w in waveforms[awg].values()]
+            port = list(waveforms[awg].keys())
+            wave = list(waveforms[awg].values())
             # print(port)
             if len(wave) == 1 or len(wave) == 2:
                 hds[dev_id].send_waveform(waveform=wave,awg_index=awg,port=port)
@@ -321,9 +344,19 @@ def runDevices(qubits,wave_AWG,wave_readout):
                 hd.awg_open(awgs_index=[k])
     qa.awg_open()## download experimental data
     # t0=time.time()
-    data = qa.get_data()
+    _data = qa.get_data()
     # print('get_data use %.3f s'%(time.time()-t0))
-    return data
+    
+    if qa.source == 7: ## single channels
+        return _data
+    else: ## double channels
+        ks = range(int(len(_data)/2))
+        get_doubleChannel = lambda k: _data[2*k]+1j*_data[2*k+1]
+        data_doubleChannel = list(map(get_doubleChannel,ks))
+        return data_doubleChannel
+            
+    
+
 
 
 def awgWave_dict(ports,waves):
