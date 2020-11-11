@@ -1,23 +1,26 @@
-# -*- coding: utf-8 -*-
-"""
-Helpers for Zurich Instruments
-including classes for AWG devices, microwave sources
-"""
-
-
 import zhinst.utils ## create API object
 import textwrap ## to write sequencer's code
 import time ## show total time in experiments
 import numpy as np 
 from numpy import pi
-
+import enum
 
 from zilabrad.util import singleton,singletonMany
 from zilabrad.instrument.waveforms import convertUnits
 
 
-
-
+class qaSource(enum.Enum):
+    """ Constants (int) for selecting result logging source """
+    TRANS = 0
+    THRES = 1
+    ROT = 2
+    TRANS_STAT = 3
+    CORR_TRANS = 4
+    CORR_THRES = 5
+    CORR_STAT = 6
+    INTEGRATION = 7
+    name = ['TRANS','THRES','ROT','TRANS_STAT',
+    'CORR_TRANS','CORR_THRES','CORR_STAT','INTEGRATION']
 
 @singleton
 class ziDAQ(object):
@@ -40,7 +43,7 @@ class zurich_qa(object):
         calling it again via 'zurich_qa(obj_name='obj1')' will not re-initiate but get the old object. 
     Instance: The instance now will return a dictionary of objects (value) and their obj_name (key) that has been created
     """
-    def __init__(self,obj_name='QA_1',device_id='dev2592',labone_ip='localhost'): 
+    def __init__(self,obj_name='qa_1',device_id='dev2592',labone_ip='localhost'): 
         self.obj_name = obj_name
         self.id = device_id
         self.noisy = False ## if open, will activate all print command during device working
@@ -52,7 +55,7 @@ class zurich_qa(object):
             self.FS = 1.8e9/(self.daq.getInt('/{:s}/awgs/0/time'.format(self.id))+1) ## sample rate
             self.init_setup()
         except:
-            print('Failed to initialize, please check device.')
+            print('Failed to initialize %s, please check device.'%self.id)
 
     def init_setup(self):
         """ initialize device settings.  
@@ -61,9 +64,12 @@ class zurich_qa(object):
         self.result_samples = 128
         self.qubit_frequency = [] # all demodulate frequency value
         self.paths = [] # save result path, equal to channel number
-        self.source = 7 ## qa result mode, 7=integration--> return origin (I+iQ)
         self.waveform_length = 0 ## qa pulse length in AWGs; unit: sample number
         self.integration_length = 0 ## qa integration length; unit: sample number
+
+        ## qa result mode, (default) integration--> return origin (I+iQ)
+        self.source = qaSource.INTEGRATION.value
+        self.set_qaSource_mode(self.source)
 
         self.set_adc_trig_delay(0) ## delay after hd trigger, unit -> second
         self.set_readout_delay(0)  ## delay after qa pulse start, unit -> second
@@ -95,8 +101,8 @@ class zurich_qa(object):
         self.daq.setInt('/{:s}/awgs/0/single'.format(self.id), 1) ## close Rerun
         print('%s: Complete Initialization'%self.id)
 
-    def reset_zi(self):
-        print('You need to manually restart the device')
+    # def reset_zi(self):
+    #     print('You need to manually restart the device')
 
     ####-- device parameters set & get --####
     def set_result_samples(self,sample):
@@ -158,6 +164,25 @@ class zurich_qa(object):
         if self.noisy:
             print('[%s] update_pulse_length: %r'%(self.id,self.waveform_length))
 
+    def set_qaSource_mode(self,mode):
+        if mode == qaSource.INTEGRATION.value:
+            self.daq.setInt('/{:s}/qas/0/integration/sources/*'.format(self.id), 0)
+            self.daq.setComplex('/{:s}/qas/0/rotations/*'.format(self.id),1)
+            self.daq.setDouble('/{:s}/qas/0/deskew/rows/*/cols/*'.format(self.id), 1)
+        else:
+            for k in range(5):
+                self.daq.setInt('/{:s}/qas/0/integration/sources/{:d}'.format(self.id,2*k), 0)
+                self.daq.setInt('/{:s}/qas/0/integration/sources/{:d}'.format(self.id,2*k+1), 1)
+                self.daq.setComplex('/{:s}/qas/0/rotations/{:d}'.format(self.id,2*k),1-1j)
+                self.daq.setComplex('/{:s}/qas/0/rotations/{:d}'.format(self.id,2*k+1),1+1j)
+            self.daq.setDouble('/{:s}/qas/0/deskew/rows/1/cols/0'.format(self.id), 0)
+            self.daq.setDouble('/{:s}/qas/0/deskew/rows/0/cols/1'.format(self.id), 0)
+            self.daq.setDouble('/{:s}/qas/0/deskew/rows/1/cols/1'.format(self.id), 1)
+            self.daq.setDouble('/{:s}/qas/0/deskew/rows/0/cols/0'.format(self.id), 1)
+        self.source = mode
+        self.daq.setInt('/{:s}/qas/0/result/source'.format(self.id), self.source)
+        print(' --> [%s] QA Source Mode: %s'%(self.id,qaSource.name.value[mode]))
+
     def awg_open(self):
         self.daq.syncSetInt('/{:s}/awgs/0/enable'.format(self.id), 1)
         if self.noisy:
@@ -173,20 +198,15 @@ class zurich_qa(object):
         """ Build waveforms sequencer. Then compile and send it to devices.
         """
         # create waveform
-        define_str = 'wave wave0 = vect(_w_);\n'
-        str0 = ''
-        play_str = ''
+        define_str,str0,play_str = 'wave w0 = zeros(_w_);\n','',''
         for i in range(len(waveform)):
-            # wave wave1 = vect(_w1); wave wave2 = vect(_w2_);...
-            str0 = str0 + define_str.replace('0', str(i+1)).replace('_w_', ','.join([str(x) for x in waveform[i]]))
-            # 1, w1, 2, w2, ....
-            play_str = play_str + (  ','+ str(i+1) + ',wave'+str(i+1) )
-        
+            str0 += define_str.replace('0', str(i+1)).replace('_w_', str(len(waveform[0])))
+            play_str += (  ','+ str(i+1) + ',w'+str(i+1) )
         play_str = play_str[1:] # delect the first comma
         
         awg_program = textwrap.dedent("""\
-        $str0       
         const f_s = _c0_;
+        $str0       
         setTrigger(AWG_INTEGRATION_ARM);// initialize integration
         setTrigger(0b000);
         repeat (getUserReg(1)) {  // = qa.result_samples
@@ -207,6 +227,7 @@ class zurich_qa(object):
         # awg_program = awg_program.replace('_c3_', str(self.average))
         awg_program = awg_program.replace('$str0', str0)
         awg_program = awg_program.replace('$play_str', play_str)
+
         self.awg_upload_string(awg_program,awg_index=awg_index)
         self.update_pulse_length() ## updata self.waveform_lenght
 
@@ -263,11 +284,23 @@ class zurich_qa(object):
                     t0 = time.time()
                     self.awg_builder(waveform=waveform,awg_index=0)
                     print('[%s-AWG0] builder: %.3f s'%(self.id,time.time()-t0))
+                    _n_ = self.waveform_length - len(waveform[0])
+                    if _n_ >= 0:
+                        waveform_add = [np.hstack((wf,np.zeros(_n_))) for wf in waveform] 
+                        self.reload_waveform(waveform=waveform_add)
+                    else:
+                        raise Exception('Error awg_builder or reload_waveform')
         else:
             print('Bulid [%s-AWG0] Sequencer (len=%r > %r)'%(self.id,len(waveform[0]),self.waveform_length))
             t0 = time.time()
             self.awg_builder(waveform=waveform,awg_index=0)
             print('[%s-AWG0] builder: %.3f s'%(self.id,time.time()-t0))
+            _n_ = self.waveform_length - len(waveform[0])
+            if _n_ >= 0:
+                waveform_add = [np.hstack((wf,np.zeros(_n_))) for wf in waveform] 
+                self.reload_waveform(waveform=waveform_add)
+            else:
+                raise Exception('Error awg_builder or reload_waveform')
            
 
     def reload_waveform(self,waveform,awg_index=0,index=0): 
@@ -284,13 +317,22 @@ class zurich_qa(object):
     ####--set qa demodulation frequency (qubit sideband part)--####
     def set_qubit_frequency(self, frequency_list):
         # set integration weights, and result paths
-        self.qubit_frequency = frequency_list
+        self.qubit_frequency = np.zeros(10)
+        n_ch = len(frequency_list)
+        if self.source == qaSource.INTEGRATION.value:
+            if n_ch > 10:
+                print('frequency list(len=%d) exceeds the max channel number 10.'%n_ch)
+            self.qubit_frequency[0:n_ch:1] = frequency_list[:10]
+        if self.source == qaSource.ROT.value:
+            if n_ch > 5:
+                print('frequency list(len=%d) exceeds the max channel number 5.'%n_ch)
+            self.qubit_frequency[0:n_ch*2:2] = frequency_list[:5]
+            self.qubit_frequency[1:n_ch*2:2] = frequency_list[:5]
         self.set_all_integration() ## set integration weights
         self.set_subscribe() ## set result paths
 
     def set_all_integration(self):
         w_index = np.arange(0, self.integration_length , 1)
-        
         for channel,freq in enumerate(self.qubit_frequency):
             # assign real and image integration coefficient 
             # integration settings for one I/Q pair
@@ -301,8 +343,8 @@ class zurich_qa(object):
 
             self.daq.setVector('/{:s}/qas/0/integration/weights/{}/real'.format(self.id, channel), w_real)
             self.daq.setVector('/{:s}/qas/0/integration/weights/{}/imag'.format(self.id, channel), w_imag)
-            # set signal input mapping for QA channel : 0 -> 1 real, 2 imag
-            self.daq.setInt('/{:s}/qas/0/integration/sources/{:d}'.format(self.id, channel), 0)
+            # # set signal input mapping for QA channel : 0 -> 1 real, 2 imag
+            # self.daq.setInt('/{:s}/qas/0/integration/sources/{:d}'.format(self.id, channel), 0)
 
 
     ####--readout result part--####
@@ -317,24 +359,15 @@ class zurich_qa(object):
         self.daq.setInt('/{:s}/qas/0/result/reset'.format(self.id), 1) ## reset qa result 
         self.daq.setInt('/{:s}/qas/0/result/enable'.format(self.id), 1) ## stert qa result module, wait value
         # self.daq.sync() ## wait setting 
-        self.daq.setInt('/{:s}/qas/0/result/source'.format(self.id), source) # integration=7
+        # self.daq.setInt('/{:s}/qas/0/result/source'.format(self.id), source) # integration=7
         
         get_path = lambda ch: '/{:s}/qas/0/result/data/{:d}/wave'.format(self.id,ch)
         chs = range(len(self.qubit_frequency))
         self.paths = list(map(get_path,chs))
-        
-        # for ch in range(len(self.qubit_frequency)):
-            # path = '/{:s}/qas/0/result/data/{:d}/wave'.format(self.id,ch)
-            # self.paths.append(path)
 
         if self.noisy:
             print('\n', 'Subscribed paths: \n ', self.paths, '\n')
         self.daq.subscribe(self.paths)
-
-    # def stop_subscribe(self):       
-    #     # Stop result unit
-    #     self.daq.unsubscribe(self.paths)
-    #     self.daq.setInt('/{:s}/qas/0/result/enable'.format(self.id), 0)
 
     def acquisition_poll(self, daq, paths, num_samples, timeout=10.0):
         """ Polls the UHFQA for data.
@@ -371,11 +404,6 @@ class zurich_qa(object):
                 num_obtained = sum(map(len,chunks[p]))
                 if num_obtained >= num_samples:
                     gotem[p] = True
-                # for v in dataset[p]:
-                    # chunks[p].append(v['vector'])
-                    # num_obtained = sum([len(x) for x in chunks[p]])
-                    # if num_obtained >= num_samples:
-                        # gotem[p] = True
             time += poll_length
     
         if not all(gotem.values()):
