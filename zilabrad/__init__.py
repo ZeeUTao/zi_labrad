@@ -35,14 +35,13 @@ from zilabrad import multiplex
 
 
 def connect_ZI():
-    global session
     user = input("Enter user (default: hwh)") or "hwh"
-    session = update_session(user=user)
+    sample = update_session(user=user)
     do_bringup = input("Skip Bringup? (enter 0 for skip, default 1)") or 1
     if do_bringup != '0':
         qctx = qubitContext()
         qctx.refresh()
-    return
+    return sample
 
 def reset_ZI():
     clear_singletonMany(zurichHelper.zurich_qa)
