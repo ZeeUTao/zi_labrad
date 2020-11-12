@@ -7,6 +7,7 @@ __all__ = [
     'multiplex',
     'dataProcess',
     'connect_ZI',
+    'reset_ZI',
     # for developer
     'qubitContext',
     'qubitServer',
@@ -22,6 +23,7 @@ from zilabrad.instrument import waveforms
 
 # example: ar[0:2:0.1,GHz]
 from zilabrad.pyle.util import sweeptools
+from zilabrad.util import clear_singletonMany
 ar = sweeptools.RangeCreator()
 
 from zilabrad.instrument import zurichHelper
@@ -42,6 +44,9 @@ def connect_ZI():
         qctx.refresh()
     return
 
+def reset_ZI():
+    clear_singletonMany(zurichHelper.zurich_qa)
+    clear_singletonMany(zurichHelper.zurich_hd)
 
 # -----------------------------------------------------------------------------
 # Clean name space
