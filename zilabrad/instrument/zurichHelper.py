@@ -345,43 +345,25 @@ class zurich_qa(object):
         if self.noisy:
             print('\n AWG upload successful. Output enabled. AWG Standby. \n')
 
-    def send_waveform(self, waveform=[[0], [0]]):
-        """ waveform: all waveform in this device
+
+    def send_waveform(self, waveform, recursion=3):
+        """ 
+        Args:
+            waveform: all waveform in this device
+            e.g.: [[1.,1.,...],[1.,1.,...]]
             Here judge which awgs or port will be used
             to reload. Fill zeros at the end of waveform
             to match the prior waveform length or compile
             sequencer again.
+
+            recursion (int): the function will be called
+            at most (recursion+1) times
         """
+        if recursion < 0:
+            raise Exception("recursion callings exceed")
+
         _n_ = self.waveform_length - len(waveform[0])
-        if _n_ >= 0:
-            waveform_add = [np.hstack((wf, np.zeros(_n_))) for wf in waveform]
-            try:
-                self.reload_waveform(waveform=waveform_add)
-            except Exception:
-                self.update_pulse_length()
-                _n_ = self.waveform_length - len(waveform[0])
-                if _n_ >= 0:
-                    waveform_add = [np.hstack((wf, np.zeros(_n_)))
-                                    for wf in waveform]
-                    self.reload_waveform(waveform=waveform_add)
-                else:
-                    print('Bulid [%s-AWG0] Sequencer (len=%r > %r)' %
-                          (self.id, len(waveform[0]), self.waveform_length))
-                    t0 = time.time()
-                    self._awg_builder(
-                        number_port=len(waveform),
-                        wave_length=len(waveform[0]),
-                        awg_index=0)
-                    print('[%s-AWG0] builder: %.3f s' %
-                          (self.id, time.time()-t0))
-                    _n_ = self.waveform_length - len(waveform[0])
-                    if _n_ >= 0:
-                        waveform_add = [
-                            np.hstack((wf, np.zeros(_n_))) for wf in waveform]
-                        self.reload_waveform(waveform=waveform_add)
-                    else:
-                        raise Exception('Error _awg_builder or reload_waveform')
-        else:
+        if _n_ < 0:
             print('Bulid [%s-AWG0] Sequencer (len=%r > %r)' %
                   (self.id, len(waveform[0]), self.waveform_length))
             t0 = time.time()
@@ -390,13 +372,20 @@ class zurich_qa(object):
                 wave_length=len(waveform[0]),
                 awg_index=0)
             print('[%s-AWG0] builder: %.3f s' % (self.id, time.time()-t0))
-            _n_ = self.waveform_length - len(waveform[0])
-            if _n_ >= 0:
-                waveform_add = [np.hstack((wf, np.zeros(_n_)))
-                                for wf in waveform]
+            self.send_waveform(
+                waveform=waveform,
+                recursion=recursion-1)
+            return
+        else:
+            waveform_add = [np.hstack((wf, np.zeros(_n_))) for wf in waveform]
+            try:
                 self.reload_waveform(waveform=waveform_add)
-            else:
-                raise Exception('Error _awg_builder or reload_waveform')
+            except Exception:
+                self.update_pulse_length()
+                self.send_waveform(
+                    waveform=waveform,
+                    recursion=recursion-1)
+            return
 
     def reload_waveform(self, waveform, awg_index=0, index=0):
         """ waveform: (numpy.array) one/two waves with unit amplitude.

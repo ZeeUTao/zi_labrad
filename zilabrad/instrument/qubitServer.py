@@ -10,6 +10,7 @@ import time
 from functools import wraps
 import logging
 import numpy as np 
+import gc
 
 from zilabrad.instrument import waveforms
 from zilabrad.instrument.zurichHelper import zurich_qa, zurich_hd
@@ -125,7 +126,9 @@ def RunAllExperiment(function,iterable,dataset,
                     )
             yield result
     
-    # create qubitContext (singleton) 
+    print(f"garbage collect {gc.collect()}")
+    
+    # create qubitContext (singleton)
     qContext = qubitContext()
     
     results = dataset.capture(wrapped())
@@ -306,50 +309,36 @@ def runDevices(qubits,wave_AWG,wave_readout):
     qa = qas['qa_1']
     hds = qContext.servers_hd
 
-    # hd = hd['1']
-    
-    # t0=time.time()
     qubits_port = qContext.getPorts(qubits)
     wave_dict = awgWave_dict(ports=qubits_port,waves=wave_AWG)
-    # print('wave_dict use %.3f s'%(time.time()-t0))
 
-    ## send data packet to multiply devices
-    # t0=time.time()
+    # send data packet to multiply devices
     qa.send_waveform(waveform=wave_readout)
-    # print('qa.send_waveform use %.3f s'%(time.time()-t0))
 
-    # t0=time.time()
+
     for dev_id,waveforms in wave_dict.items():
         for awg in range(4): ## default 4 awgs in every zi hdawgs
             port = list(waveforms[awg].keys())
             wave = list(waveforms[awg].values())
-            # print(port)
             if len(wave) == 1 or len(wave) == 2:
                 hds[dev_id].send_waveform(waveform=wave,awg_index=awg,port=port)
-                # print('awg_index: %r, port: %r;\n hd waveform_length: %r'%(awg,port,hd.waveform_length))
-                # hd.send_waveform(waveform=wave,awg_index=awg,port=port) ## one device case, use same hd
 
             elif len(wave) > 2:
                 print('Too many port: %r'%port)
-            # else:
-            #     pass ## empty case should not send
-    # print('hds.send_waveform use %.3f s'%(time.time()-t0))
 
-    ## start to run experiment
+
     for name,hd in hds.items():
         if name not in wave_dict.keys():
             continue
         for k in range(4):
             if len(wave_dict[name][k])!=0:
                 hd.awg_open(awgs_index=[k])
-    qa.awg_open()## download experimental data
-    # t0=time.time()
+    qa.awg_open()  # download experimental data
     _data = qa.get_data()
-    # print('get_data use %.3f s'%(time.time()-t0))
     
-    if qa.source == 7: ## single channels
+    if qa.source == 7:  # single channels
         return _data
-    else: ## double channels
+    else:  # double channels
         ks = range(int(len(_data)/2))
         get_doubleChannel = lambda k: _data[2*k]+1j*_data[2*k+1]
         data_doubleChannel = list(map(get_doubleChannel,ks))

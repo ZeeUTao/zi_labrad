@@ -1,7 +1,7 @@
 
 from abc import ABC
 from functools import wraps
-
+import gc
     
 def singletonMany(class_):
     """
@@ -53,5 +53,11 @@ def singleton(class_):
     return SingletonFactory
     
     
-    
+def clear_singletonMany(class_):
+    _keys = list(class_.instance.keys())
+    for _key in _keys:
+        del class_(_key)[_key]
+    del _keys
+    gc.collect()
+    return
     
