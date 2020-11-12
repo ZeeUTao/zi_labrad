@@ -345,6 +345,7 @@ class zurich_qa(object):
         if self.noisy:
             print('\n AWG upload successful. Output enabled. AWG Standby. \n')
 
+
     def send_waveform(self, waveform, recursion=3):
         """ 
         Args:
