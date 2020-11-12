@@ -345,10 +345,11 @@ class zurich_qa(object):
         if self.noisy:
             print('\n AWG upload successful. Output enabled. AWG Standby. \n')
 
-    def send_waveform(self, waveform=[[0], [0]], recursion=4):
+    def send_waveform(self, waveform, recursion=3):
         """ 
         Args:
             waveform: all waveform in this device
+            e.g.: [[1.,1.,...],[1.,1.,...]]
             Here judge which awgs or port will be used
             to reload. Fill zeros at the end of waveform
             to match the prior waveform length or compile
@@ -371,7 +372,7 @@ class zurich_qa(object):
                 awg_index=0)
             print('[%s-AWG0] builder: %.3f s' % (self.id, time.time()-t0))
             self.send_waveform(
-                waveform=[[0], [0]],
+                waveform=waveform,
                 recursion=recursion-1)
             return
         else:
@@ -381,7 +382,7 @@ class zurich_qa(object):
             except Exception:
                 self.update_pulse_length()
                 self.send_waveform(
-                    waveform=[[0], [0]],
+                    waveform=waveform,
                     recursion=recursion-1)
             return
 
