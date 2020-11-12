@@ -54,9 +54,6 @@ def singleton(class_):
     
     
 def clear_singletonMany(class_):
-    if not hasattr(class_,'instance'):
-        raise ValueError("'class_' must have attribute instance")
-        
     _keys = list(class_.instance.keys())
     for _key in _keys:
         del class_(_key)[_key]

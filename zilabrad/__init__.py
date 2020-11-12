@@ -7,7 +7,6 @@ __all__ = [
     'multiplex',
     'dataProcess',
     'connect_ZI',
-    'reset_ZI',
     # for developer
     'qubitContext',
     'qubitServer',
@@ -34,7 +33,11 @@ from zilabrad.plots import dataProcess
 from zilabrad import multiplex
 
 
-def connect_ZI():
+def connect_ZI(reset=False):
+    if reset:
+        clear_singletonMany(zurichHelper.zurich_qa)
+        clear_singletonMany(zurichHelper.zurich_hd)
+    
     user = input("Enter user (default: hwh)") or "hwh"
     sample = update_session(user=user)
     do_bringup = input("Skip Bringup? (enter 0 for skip, default 1)") or 1
@@ -42,10 +45,6 @@ def connect_ZI():
         qctx = qubitContext()
         qctx.refresh()
     return sample
-
-def reset_ZI():
-    clear_singletonMany(zurichHelper.zurich_qa)
-    clear_singletonMany(zurichHelper.zurich_hd)
 
 # -----------------------------------------------------------------------------
 # Clean name space
