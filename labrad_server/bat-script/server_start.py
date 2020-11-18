@@ -6,7 +6,7 @@ Simple python3 interface for running bash commands
 import os
 import textwrap
 
-_glob_paras = {"script_dir":r"M:\labrad_server"}
+_glob_paras = {"script_dir":r"M:\zi_labrad\labrad_server"}
 # directory for labrad_server
 
 _glob_paras["old_getcwd"] = os.getcwd()
