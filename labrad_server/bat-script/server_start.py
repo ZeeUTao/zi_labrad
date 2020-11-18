@@ -4,12 +4,30 @@ Simple python3 interface for running bash commands
 """
 
 import os
+import textwrap
 
+_glob_paras = {"script_dir":r"M:\zi_labrad\labrad_server"}
+# directory for labrad_server
 
-_glob_paras = {"script_dir":r"M:\labrad_server"}
 _glob_paras["old_getcwd"] = os.getcwd()
+_glob_paras["scalabradPath"] = r"M:\scalabrad-0.8.3\bin\labrad"
+_glob_paras["RegistryPath"] = r'file:///M:/Registry?format=delphi'
 
+# setting your remote ip
+_remote_ip = os.getenv('Labradhost')
+if _remote_ip:
+    _glob_paras["Labradhost"] = _remote_ip
+else:
+    _glob_paras["Labradhost"] = 'localhost'
 
+_password = os.getenv('labradpassword')
+if _password:
+    _glob_paras["labradpassword"] = _password
+else:
+    _glob_paras["labradpassword"] = ''
+    
+    
+_glob_paras["Labradport"] = r'7682'
 
 def cd_oldDir():
     os.chdir(_glob_paras["old_getcwd"])
@@ -75,10 +93,18 @@ def add_servers():
             
         return func
         
-    def start_labrad(
-        path = r"M:\scalabrad-0.8.3\bin\labrad",
-        registryFile = r"file:///M:/Registry?format=delphi"):
-        start_cmd_command("%s --registry %s"%(path,registryFile))
+    def start_labrad():
+        path = _glob_paras["scalabradPath"]
+        reg_path = _glob_paras["RegistryPath"]
+        host = _glob_paras["Labradhost"]
+        port = _glob_paras["Labradport"]
+        password = _glob_paras["labradpassword"]
+        command_str = \
+f"""{path} --registry {reg_path} \
+--tls-hosts {host} --port {port} --tls-required false \
+--password {password}
+"""
+        start_cmd_command(textwrap.dedent(command_str))
         
     # add servers    
     server = Servers(idx=1,
