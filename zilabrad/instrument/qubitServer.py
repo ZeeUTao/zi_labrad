@@ -1,9 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-qubitServer to control all instruments
-
-Created on 2020.09.09 20:57
-@author: Tao Ziyu
+Control flow for devices
 """
 
 import time
@@ -17,31 +14,11 @@ from zilabrad.instrument.zurichHelper import zurich_qa, zurich_hd
 from zilabrad.instrument.QubitContext import loadQubits
 from zilabrad.instrument.QubitContext import qubitContext
 
-
-import labrad
 from labrad.units import Unit, Value
-_unitSpace = ('V', 'mV', 'us', 'ns', 's', 'GHz',
-              'MHz', 'kHz', 'Hz', 'dBm', 'rad', 'None')
-V, mV, us, ns, s, GHz, MHz, kHz, Hz, dBm, rad, _l = [
-    Unit(s) for s in _unitSpace]
 
 
 np.set_printoptions(suppress=True)
 _noisy_printData = True
-
-
-def check_device():
-    """
-    Make sure all device in work before runQ
-    """
-    qContext = qubitContext()
-    server = qContext.servers_microwave
-    IPdict = qContext.IPdict_microwave
-
-    for key, value in IPdict.items():
-        server.select_device(value)
-        server.output(True)
-    return
 
 
 def stop_device():
@@ -128,12 +105,8 @@ def RunAllExperiment(function, iterable, dataset,
 
     # create qubitContext (singleton)
     qContext = qubitContext()
-
     results = dataset.capture(wrapped())
-
     resultArray = np.asarray(list(results))
-    # for result in results:
-    #     result_list.append(result)
 
     qContext.clearTempParas()
 
@@ -218,16 +191,13 @@ def makeSequence_AWG(qubits):
 
     for q in qubits:
         # the order must be 'dc,xy,z' ! match the order in QubitContext
-
         # line [DC]
         if 'dc' in q.keys():
             wave_AWG += [waveServer.func2array(q.dc, start, end, FS)]
-
         # line [xy] I,Q
         if 'xy' in q.keys():
             wave_AWG += [waveServer.func2array((q.xy)[i], start, end, FS)
                          for i in [0, 1]]
-
         # line [z]
         if 'z' in q.keys():
             wave_AWG += [waveServer.func2array(q.z, start, end, FS)]
@@ -353,8 +323,10 @@ def awgWave_dict(ports, waves):
     port_dict = {}
     for k, wave in enumerate(waves):
         dev_name = ports[k][0]
-        awg_index = (ports[k][1]+1) // 2 - 1  # awg_index: (1~8)-->(0,1,2,3)
-        p_idx = (ports[k][1]+1) % 2 + 1  # port: (1~8) --> (1,2)
+        awg_index = (ports[k][1]+1) // 2 - 1
+        # awg_index: (1~8)-->(0,1,2,3)
+        p_idx = (ports[k][1]+1) % 2 + 1
+        # port: (1~8) --> (1,2)
 
         if dev_name not in port_dict.keys():
             port_dict[dev_name] = [{}, {}, {}, {}]
@@ -365,19 +337,11 @@ def awgWave_dict(ports, waves):
 
 def runQubits(qubits, exp_devices=None):
     """ generally for running multiqubits
-
     Args:
         qubits (list): a list of dictionary
-        _runQ_servers (list/tuple): instances used to control device
-
-    TODO:
-    - clear q.xy/z/dc and their array after send();
     """
-    # prepare wave packets
-    # time0 = time.time()
     wave_AWG = makeSequence_AWG(qubits)
     wave_readout = makeSequence_readout(qubits)
-    # print('wavePrepare use %.3f s'%(time.time()-time0))
 
     q_ref = qubits[0]
     # Now it is only two microwave sources, more should be covered
@@ -387,10 +351,5 @@ def runQubits(qubits, exp_devices=None):
         powerList=[q_ref['readout_mw_power'], q_ref['xy_mw_power']])
 
     setupDevices(qubits)
-    # print('setupDevices use %.3f s'%(time.time()-time0))
-
-    # run AWG and reaout devices and get data
-    # time0 = time.time()
     data = runDevices(qubits, wave_AWG, wave_readout)
-    # print('get data use %.3f s'%(time.time()-time0))
     return data
