@@ -1003,7 +1003,7 @@ def processData_1q(data, q):
     # analyze data and return
     _d_ = data[0]
     # only relative strength;
-    amp = np.abs(np.mean(_d_))/q['readout_amp']['dBm']
+    amp = np.abs(np.mean(_d_))/power2amp(q['readout_amp']['dBm'])
     phase = np.angle(np.mean(_d_))
     Iv = np.real(np.mean(_d_))
     Qv = np.imag(np.mean(_d_))

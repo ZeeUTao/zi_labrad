@@ -4,6 +4,7 @@ Server for ANRITSU,MG3692C
 import pyvisa as visa
 from functools import wraps
 import logging
+import gc
 
 max_refresh = 3
 
@@ -18,6 +19,7 @@ class AnritsuServer(object):
     deviceName = ["ANRITSU MG3692C"]
 
     def __init__(self, address_list: list):
+        gc.collect()
         self.devices = {}
         rm = visa.ResourceManager()
         for address in address_list:
@@ -34,22 +36,27 @@ class AnritsuServer(object):
 
     def refresh_device(self, dev):
         address = dev._resource_name
-        rm = visa.ResourceManager()
+
+        # clear storage
+        del self.devices[address]
+        gc.collect()
+
+        rm = self.rm
         self.devices[address] = rm.open_resource(address)
         self.select_device(address)
 
     def refresh_when_error(func):
         @wraps(func)
         def wrapper(self, *args, **kwargs):
-            dev = self.selectedDevice
             for i in range(max_refresh):
+                dev = self.selectedDevice
                 try:
                     return func(self, dev, *args, **kwargs)
                 except Exception as e:
                     if i >= max_refresh-1:
                         raise e
                     logging.warning(e)
-                    self.refresh_device(self, dev)
+                    self.refresh_device(dev)
             # return once more for safety
             return func(self, dev, *args, **kwargs)
         return wrapper
