@@ -332,7 +332,7 @@ def spectroscopy(sample, measure=0, stats=1024, freq=None, specLen=1*us, specAmp
 
 
 @expfunc_decorator
-def rabihigh(sample, measure=0, stats=1024, piamp=0.05, piLen=None, df=0*MHz,
+def rabihigh(sample, measure=0, stats=1024, piamp=None, piLen=None, df=0*MHz,
              bias=None, zpa=None, name='rabihigh', des='', back=False):
     """ 
         sample: select experimental parameter from registry;

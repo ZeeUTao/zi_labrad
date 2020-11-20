@@ -33,4 +33,4 @@ dh = dp.datahelp()
 
 
 if __name__ == '__main__':
-    sample = connect_ZI(reset=False)
+    ss = connect_ZI(reset=False)
