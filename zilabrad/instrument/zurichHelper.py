@@ -106,17 +106,16 @@ class zurich_qa(object):
 
         try:
             print("\nBring up %s in %s" % (self.id, labone_ip))
-            self.daq = ziDAQ().daq
+            self.daq = ziDAQ(labone_ip=labone_ip).daq
             self.daq.connectDevice(self.id, '1gbe')
             print(self.daq)
             self.FS = 1.8e9 / \
                 (self.daq.getInt(
                     '/{:s}/awgs/0/time'.format(self.id))+1)  # sample rate
             self.init_setup()
-        except Exception:
-            raise Exception(
-                "Failed to initialize %s,\
-                please check device." % self.id)
+        except Exception as e:
+            print("Failed to initialize [%s]" % self.id.upper())
+            raise e
 
     def init_setup(self):
         """ initialize device settings.
@@ -544,14 +543,15 @@ class zurich_hd:
         self.noisy = False  # if open, will activate all print command during device working
         try:
             print('\nBring up %s in %s' % (self.id, labone_ip))
-            self.daq = ziDAQ().daq
+            self.daq = ziDAQ(labone_ip=labone_ip).daq
             self.daq.connectDevice(self.id, '1gbe')
             print(self.daq)
             self.FS = self.daq.getDouble(
                 '/{:s}/system/clocks/sampleclock/freq'.format(self.id))  # sample rate
             self.init_setup()
-        except Exception:
-            print('Failed to initialize, please check device.')
+        except Exception as e:
+            print("Failed to initialize [%s]" % self.id.upper())
+            raise e
 
     def init_setup(self):
         # four awg's waveform length, unit --> Sample Number
