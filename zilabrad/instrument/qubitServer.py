@@ -16,7 +16,6 @@ from zilabrad.instrument.QubitContext import qubitContext
 
 from labrad.units import Unit, Value
 
-
 np.set_printoptions(suppress=True)
 _noisy_printData = True
 
@@ -105,6 +104,7 @@ def RunAllExperiment(function, iterable, dataset,
 
     # create qubitContext (singleton)
     qContext = qubitContext()
+
     results = dataset.capture(wrapped())
     resultArray = np.asarray(list(results))
 
@@ -191,13 +191,16 @@ def makeSequence_AWG(qubits):
 
     for q in qubits:
         # the order must be 'dc,xy,z' ! match the order in QubitContext
+
         # line [DC]
         if 'dc' in q.keys():
             wave_AWG += [waveServer.func2array(q.dc, start, end, FS)]
+
         # line [xy] I,Q
         if 'xy' in q.keys():
             wave_AWG += [waveServer.func2array((q.xy)[i], start, end, FS)
                          for i in [0, 1]]
+
         # line [z]
         if 'z' in q.keys():
             wave_AWG += [waveServer.func2array(q.z, start, end, FS)]
@@ -323,6 +326,7 @@ def awgWave_dict(ports, waves):
     port_dict = {}
     for k, wave in enumerate(waves):
         dev_name = ports[k][0]
+
         awg_index = (ports[k][1]+1) // 2 - 1
         # awg_index: (1~8)-->(0,1,2,3)
         p_idx = (ports[k][1]+1) % 2 + 1
@@ -352,4 +356,5 @@ def runQubits(qubits, exp_devices=None):
 
     setupDevices(qubits)
     data = runDevices(qubits, wave_AWG, wave_readout)
+
     return data
