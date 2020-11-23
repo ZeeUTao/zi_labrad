@@ -28,10 +28,10 @@ dp = dataProcess
 dh = dp.datahelp()
 
 
-# if __name__ == '__main__':
-    # from zilabrad.tests import default_parameter
-    # default_parameter.main()
-    # connect_ZI(reset=False, user='user_example')
-
 if __name__ == '__main__':
-    ss = connect_ZI(reset=False, user='hwh')
+    from zilabrad.tests import default_parameter
+    default_parameter.main()
+    connect_ZI(reset=False, user='user_example')
+
+# if __name__ == '__main__':
+    # ss = connect_ZI(reset=False, user='hwh')
