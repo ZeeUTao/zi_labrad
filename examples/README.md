@@ -35,3 +35,13 @@ if __name__ == '__main__':
 
 Copy the script that your want edit in this folder, usually `multiplex.py` ,
 rename it as you like, and import it. 
+
+## Path problem
+
+To appropriately import the modules in other path, you can add the following code in front of your scripts
+
+```python
+repository_zilabrad = r'M:\zi_labrad'
+sys.path.append(repository_zilabrad)
+```
+
