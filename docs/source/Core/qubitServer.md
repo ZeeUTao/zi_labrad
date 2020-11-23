@@ -20,6 +20,33 @@
 
 
 
+## Time order
+
+- DC bias start previously
+- XY, Z pulses
+- readout
+- DC bias end
+
+Some important parameters are given below
+
+```python
+# int: sample number for one sweep point
+qa.set_result_samples(q_ref['stats'])
+
+# only related with wiring and devices, delay between QA
+# signal output and demodulation
+qa.set_readout_delay(q_ref['readout_delay'])
+
+# set qa pulse length in AWGs, and set same length for demodulate.
+qa.set_pulse_length(q_ref['readout_len'])
+
+# delay between zurich HD and QA
+qa.set_adc_trig_delay(q_ref['bias_start']['s']+q_ref['experiment_length'])
+
+```
+
+
+
 ## Cost of time
 
 Since more devices can operate simultaneously, *setup devices, upload setting and wait for data* will not be too long and only related to the ports of one devices (8 for Zurich HD).
