@@ -36,13 +36,13 @@ __all__ = [
 ]
 
 
-def connect_ZI(reset=False):
+def connect_ZI(reset=False, user='hwh'):
     if reset:
         clear_singletonMany(zurichHelper.zurich_qa)
         clear_singletonMany(zurichHelper.zurich_hd)
 
-    user = input("Enter user (default: hwh)") or "hwh"
-    sample = update_session(user=user)
+    user_input = input(f"Enter user (default: {user})") or user
+    sample = update_session(user=user_input)
     do_bringup = input("Skip Bringup? (enter 0 for skip, default 1)") or 1
     if do_bringup != '0':
         qctx = qubitContext()

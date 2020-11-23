@@ -24,15 +24,12 @@ from zilabrad.instrument.QubitContext import loadQubits, qubitContext
 from zilabrad.instrument.qubitServer import runQubits as runQ
 
 
-import zilabrad.plots.adjuster
 import zilabrad.instrument.waveforms as waveforms
 from zilabrad.pyle.envelopes import Envelope, NOTHING
-from zilabrad.plots.dataProcess import datahelp
 from zilabrad.plots import dataProcess
 
 from zilabrad.pyle import sweeps
 from zilabrad.pyle.util import sweeptools
-from zilabrad.pyle.sweeps import checkAbort
 
 
 from labrad.units import Unit, Value
@@ -43,7 +40,6 @@ V, mV, us, ns, s, GHz, MHz, kHz, Hz, dBm, rad, _l = [
     Unit(s) for s in _unitSpace]
 ar = sweeptools.RangeCreator()
 
-datahelper = datahelp()
 
 
 def dataset_create(dataset):
@@ -256,7 +252,7 @@ def s21_scan(sample, measure=0, stats=1024, freq=6.0*GHz, delay=0*ns, phase=0,
         Qv = np.imag(np.mean(_d_))
         return [amp, phase, Iv, Qv]
 
-    axes_scans = checkAbort(gridSweep(axes), prefix=[1], func=stop_device)
+    axes_scans = gridSweep(axes)
     result_list = RunAllExp(runSweeper, axes_scans, dataset)
     if back:
         return result_list
@@ -325,7 +321,7 @@ def spectroscopy(sample, measure=0, stats=1024, freq=None, specLen=1*us, specAmp
         data = runQ([q], devices)
         return processData_1q(data, q)
 
-    axes_scans = checkAbort(gridSweep(axes), prefix=[1], func=stop_device)
+    axes_scans = gridSweep(axes)
     result_list = RunAllExp(runSweeper, axes_scans, dataset)
     if back:
         return result_list
@@ -395,7 +391,7 @@ def rabihigh(sample, measure=0, stats=1024, piamp=None, piLen=None, df=0*MHz,
         data = runQ([q], devices)
         return processData_1q(data, q)
 
-    axes_scans = checkAbort(gridSweep(axes), prefix=[1], func=stop_device)
+    axes_scans = gridSweep(axes)
     result_list = RunAllExp(runSweeper, axes_scans, dataset)
     return
 
@@ -461,7 +457,7 @@ def IQraw(sample, measure=0, stats=1024, update=False, analyze=False, reps=1,
         return result
 
     collect, raw = True, True
-    axes_scans = checkAbort(gridSweep(axes), prefix=[1], func=stop_device)
+    axes_scans = gridSweep(axes)
 
     results = RunAllExp(runSweeper, axes_scans, dataset, collect, raw)
     data = np.asarray(results[0])
@@ -537,7 +533,7 @@ def measureFidelity(sample, rep=10, measure=0, stats=1024, update=True, analyze=
 
         return [prob0[0], prob1[0], prob0[1], prob1[1]]
 
-    axes_scans = checkAbort(gridSweep(axes), prefix=[1], func=stop_device)
+    axes_scans = gridSweep(axes)
     results = RunAllExp(runSweeper, axes_scans, dataset)
     if update:
         Qb['MatRead'] = np.mean(results, 0)[1:].reshape(2, 2)
@@ -630,7 +626,7 @@ def T1_visibility(sample, measure=0, stats=1024, delay=0.8*us,
         result = [amp1, phase1, prob1[1], amp0, phase0, prob0[1]]
         return result
 
-    axes_scans = checkAbort(gridSweep(axes), prefix=[1], func=stop_device)
+    axes_scans = gridSweep(axes)
     result_list = RunAllExp(runSweeper, axes_scans, dataset)
     if back:
         return result_list
@@ -708,7 +704,7 @@ def ramsey(sample, measure=0, stats=1024, delay=ar[0:10:0.4, us],
         result = [amp, phase, Iv, Qv, prob[1]]
         return result
 
-    axes_scans = checkAbort(gridSweep(axes), prefix=[1], func=stop_device)
+    axes_scans = gridSweep(axes)
     result_list = RunAllExp(runSweeper, axes_scans, dataset)
     if back:
         return result_list, q
@@ -815,7 +811,7 @@ def s21_dispersiveShift(sample, measure=0, stats=1024, freq=ar[6.4:6.5:0.02, GHz
         result += [np.abs((Iv1-Iv0)+1j*(Qv1-Qv0))]
         return result
 
-    axes_scans = checkAbort(gridSweep(axes), prefix=[1], func=stop_device)
+    axes_scans = gridSweep(axes)
     result_list = RunAllExp(runSweeper, axes_scans, dataset)
     if back:
         return result_list
@@ -889,7 +885,7 @@ def Nqubit_state(sample, reps=10, measure=[0, 1], states=[0, 0], name='Nqubit_st
         data = runQ(qubits, devices)
         prob = tunneling(qubits, data, level=2)
         return prob
-    axes_scans = checkAbort(gridSweep(axes), prefix=[1], func=stop_device)
+    axes_scans = gridSweep(axes)
     result_list = RunAllExp(runSweeper, axes_scans, dataset)
     return
 
@@ -942,7 +938,7 @@ def qqiswap(sample, measure=0, delay=20*ns, zpa=None, name='iswap', des=''):
         prob = tunneling(qubits, data, level=2)
         return prob
 
-    axes_scans = checkAbort(gridSweep(axes), prefix=[1], func=stop_device)
+    axes_scans = gridSweep(axes)
     result_list = RunAllExp(runSweeper, axes_scans, dataset)
     return
 
