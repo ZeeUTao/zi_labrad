@@ -3,30 +3,53 @@ import numpy as np
 from zilabrad.instrument.corrector import correct
 
 
-zero_cor = correct.Zero_correction()
+class daq_dummy:
+    def setDouble(self, path, value):
+        print('setDouble', path, value)
+        return
 
 
 def example_zero_data():
-    freqs = np.arange(4, 6, 0.1)
-    data = np.random.random((len(freqs), 3))
+    freqs = [4., 5., 6.]
+    data = np.zeros((len(freqs), 3))
     data[:, 0] = freqs
+    data[:, 1] = [0.1, 0.2, 0.3]
+    data[:, 2] = [0.4, 0.5, 0.6]
     return data
 
 
-def test_get_IQ_ports():
+daq = daq_dummy()
+zero_cor = correct.Zero_correction(daq)
+_data1 = example_zero_data()
+
+
+def test_zero_table():
+    table = correct.zero_table('dev8334', 1)
+    assert table.name == ('dev8334', 1)
+    assert table.awg_index == 1
+    assert table.device_name == 'dev8334'
+
+    assert table.is_data_loaded is False
+    assert table.get_offset(5.0) is None
+    table.load_data(_data1)
+    assert table.is_data_loaded is True
+    offsets = table.get_offset(5.0)
+    assert offsets == (0.2, 0.5)
+
+
+def test_correct_xy():
     channels = [
         ('xy_I', ('hd_1', 5)), ('xy_Q', ('hd_1', 6)),
         ('dc', ('hd_1', 7)), ('z', ('hd_1', 8))]
     qubit = {}
     qubit['channels'] = channels
-    zero_cor.deviceDict = {'hd_1': 'dev8334'}
-    device_name, ports = zero_cor.get_IQ_ports(qubit)
-    assert (device_name, ports) == ('dev8334', (5, 6))
-    return
+    zero_cor.device_dict = {'hd_1': 'dev8334'}
+    device_name, ports = zero_cor.get_table_name(qubit)
 
-
-def test_get_offset():
-    example_data = example_zero_data()
-    zero_cor.load_data(example_data)
-    _I, _Q = zero_cor.get_offset(np.random.random())
+    zero_cor.add_table(qubit)
+    table = zero_cor.dict_tables[(device_name, ports)]
+    table.load_data(_data1)
+    zero_cor.correct_xy(qubit)
+    qubit['xy_mw_fc'] = 5.0
+    zero_cor.correct_xy(qubit)
     return
