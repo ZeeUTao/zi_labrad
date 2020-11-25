@@ -143,21 +143,17 @@ class qubitContext(object):
         1. ports dictionary should only be created once in
         the beginning of experiment.
         """
-        if hasattr(self, 'ports'):
-            return self.ports
-        else:
-            ports = []
-            for q in qubits:
-                channels = dict(q['channels'])
-                # the order must be 'dc,xy,z'! match the order in qubitServer
-                if 'dc' in q.keys():
-                    ports += [channels['dc']]
-                if 'xy' in q.keys():
-                    ports += [channels['xy_I'], channels['xy_Q']]
-                if 'z' in q.keys():
-                    ports += [channels['z']]
-            self.ports = ports
-            return self.ports
+        ports = []
+        for q in qubits:
+            channels = dict(q['channels'])
+            # the order must be 'dc,xy,z'! match the order in qubitServer
+            if 'dc' in q.keys():
+                ports += [channels['dc']]
+            if 'xy' in q.keys():
+                ports += [channels['xy_I'], channels['xy_Q']]
+            if 'z' in q.keys():
+                ports += [channels['z']]
+        return ports
 
     def clearTempParas(self):
         attr_names = ['ports']
