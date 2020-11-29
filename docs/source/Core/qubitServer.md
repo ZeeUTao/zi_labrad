@@ -47,6 +47,20 @@ qa.set_adc_trig_delay(q_ref['bias_start']['s']+q_ref['experiment_length'])
 
 
 
+## Caution
+
+- If qubits different `xy_mw_fc`, you need specify the sideband frequency correctly. 
+
+  For example, the microwave source only send the carrier frequency according to the first qubit, then all of the other qubit should has
+
+  ```python
+   f_sideband =qubit['f10'] - qubit['xy_mw_fc']
+  ```
+
+  
+
+
+
 ## Cost of time
 
 Since more devices can operate simultaneously, *setup devices, upload setting and wait for data* will not be too long and only related to the ports of one devices (8 for Zurich HD).
