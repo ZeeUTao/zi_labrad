@@ -163,17 +163,21 @@ def XYnothing(q):
     return [NOTHING, NOTHING]
 
 
-def addXYgate(q, start, theta, phi):
-    q.sb_freq = (q['f10'] - q['xy_mw_fc'])[Hz]
-    amp = q.piAmp*theta/np.pi
+def addXYgate(
+        q, start, theta, phi, piAmp='piAmp', fq='f10',
+        piLen='piLen'):
+    q.sb_freq = (q[fq] - q['xy_mw_fc'])['Hz']
+    amp = q[piAmp]*theta/np.pi
+    length = q[piLen]['s']
     if 'xy' not in q:
         q['xy'] = XYnothing(q)
 
     q['xy'][0] += waveforms.cosine(amp=amp, freq=q.sb_freq,
-                                   start=start, length=q.piLen[s], phase=phi)
+                                   start=start, length=length, phase=phi)
     q['xy'][1] += waveforms.sine(amp=amp, freq=q.sb_freq,
-                                 start=start, length=q.piLen[s], phase=phi)
+                                 start=start, length=length, phase=phi)
     return
+
 
 def correct_zero(sample):
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
@@ -181,6 +185,7 @@ def correct_zero(sample):
     corr = qc.zero_correction
     for qubit in qubits:
         corr.correct_xy(qubit)
+
 
 @expfunc_decorator
 def s21_scan(sample, measure=0, stats=1024, freq=6.0*GHz, delay=0*ns, phase=0,
@@ -307,11 +312,11 @@ def spectroscopy(
         q.z = waveforms.square(amp=zpa, start=start, length=specLen+100e-9)
         start += 50e-9
         q.xy = [waveforms.cosine(
-                    amp=specAmp, freq=sb_freq['Hz'], start=start,
-                    length=specLen),
-                waveforms.sine(
-                    amp=specAmp, freq=sb_freq['Hz'], start=start,
-                    length=specLen)]
+            amp=specAmp, freq=sb_freq['Hz'], start=start,
+            length=specLen),
+            waveforms.sine(
+            amp=specAmp, freq=sb_freq['Hz'], start=start,
+            length=specLen)]
         start += specLen + 50e-9
         q['bias'] = bias
 
@@ -380,16 +385,18 @@ def rabihigh(sample, measure=0, stats=1024, piamp=None, piLen=None, df=0*MHz,
         q.z = waveforms.square(amp=zpa, start=start, length=piLen+100e-9)
         start += 50e-9
         q.xy = [waveforms.cosine(
-                    amp=piamp, freq=q.sb_freq, start=start,
-                    length=piLen),
-                waveforms.sine(
-                    amp=piamp, freq=q.sb_freq, start=start,
-                    length=piLen)]
+            amp=piamp, freq=q.sb_freq, start=start,
+            length=piLen),
+            waveforms.sine(
+            amp=piamp, freq=q.sb_freq, start=start,
+            length=piLen)]
         start += piLen + 50e-9
         q['bias'] = bias
 
-        start += 100e-9  # additional readout gap, avoid hdawgs fall affect
-        start += q['qa_start_delay'][s]  # align qa & hd start
+        # additional readout gap, avoid hdawgs fall affect
+        start += 100e-9
+        # align qa & hd start
+        start += q['qa_start_delay'][s]
 
         q['experiment_length'] = start
         q['do_readout'] = True
@@ -407,13 +414,99 @@ def rabihigh(sample, measure=0, stats=1024, piamp=None, piLen=None, df=0*MHz,
 
 
 @expfunc_decorator
-def IQraw(sample, measure=0, stats=1024, update=False, analyze=False, reps=1,
+def rabihigh21(
+        sample, measure=0, stats=1024, piamp21=None, piLen21=None, df=0*MHz,
+        zpa=None, name='rabihigh21', des='', back=False):
+    """
+        sample: select experimental parameter from registry;
+        stats: Number of Samples for one sweep point;
+    """
+    sample, qubits, Qubits = loadQubits(sample, write_access=True)
+    q = qubits[measure]
+    q.channels = dict(q['channels'])
+    q_copy = q.copy()
+    if zpa is None:
+        zpa = q['zpa']
+    if piamp21 is None:
+        piamp21 = q['piAmp21']
+    if piLen21 is None:
+        piLen21 = q['piLen21']
+
+    q.power_r = power2amp(q['readout_amp']['dBm'])
+    q.demod_freq = q['readout_freq'][Hz]-q['readout_mw_fc'][Hz]
+
+    # set some parameters name;
+    axes = [(zpa, 'zpa'), (df, 'df'),
+            (piamp21, 'piamp21'), (piLen21, 'piLen21')]
+
+    deps = dependents_1q()[:-1]
+    deps_pro = [('pro', str(i), '') for i in range(3)]
+    deps.extend(deps_pro)
+    kw = {'stats': stats}
+
+    for qb in qubits:
+        qb['awgs_pulse_len'] += q['piLen'] + q['piLen21']
+
+    # create dataset
+    dataset = sweeps.prepDataset(
+        sample, name+des, axes, deps, kw=kw, measure=measure)
+
+    def runSweeper(devices, para_list):
+        zpa, df, piamp21, piLen21 = para_list
+        q['piAmp21'] = piamp21
+        q['piLen21'] = Value(piLen21, 's')
+        q['f21'] = q_copy['f21'] + Value(df, 'Hz')
+
+        start = 0.
+        q.z = waveforms.square(
+            amp=zpa, start=start,
+            length=q.piLen['s']+q.piLen21['s'])
+
+        q['xy'] = XYnothing(q)
+        addXYgate(q, start, theta=np.pi, phi=0.)
+
+        start += q['piLen']['s']
+        start += 50e-9
+
+        addXYgate(
+            q, start, theta=np.pi, phi=0., piAmp='piAmp21', fq='f21',
+            piLen='piLen21')
+        start += q['piLen21']['s']
+
+        start += 100e-9
+        start += q['qa_start_delay']['s']
+
+        q['experiment_length'] = start
+        q['do_readout'] = True
+
+        q.dc = DCbiasPulse(q)
+        q.r = readoutPulse(q)
+
+        data = runQ([q], devices)
+
+        _d_ = data[0]
+        amp = np.abs(np.mean(_d_))/q.power_r
+        phase = np.angle(np.mean(_d_))
+        Iv = np.mean(np.real(_d_))
+        Qv = np.mean(np.imag(_d_))
+        prob = tunneling([q], [_d_], level=3)
+        # multiply channel should unfold to a list for return result
+        result = [amp, phase, Iv, Qv, prob[0], prob[1], prob[2]]
+        return result
+
+    axes_scans = gridSweep(axes)
+    result_list = RunAllExp(runSweeper, axes_scans, dataset)
+    return
+
+
+@expfunc_decorator
+def IQraw(sample, measure=0, stats=16384, update=False, analyze=False, reps=1,
           name='IQ raw', des='', back=True):
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
     q = qubits[measure]
     Qb = Qubits[measure]
     q.channels = dict(q['channels'])
-
+    q['stats'] = stats
     for qb in qubits:
         qb.power_r = power2amp(qb['readout_amp']['dBm'])
         qb.demod_freq = qb['readout_freq'][Hz]-qb['readout_mw_fc'][Hz]
@@ -436,12 +529,10 @@ def IQraw(sample, measure=0, stats=1024, update=False, analyze=False, reps=1,
         q.z = waveforms.square(
             amp=q.zpa[V], start=start, length=q.piLen[s]+100e-9)
         start += 50e-9
-        q.xy = [waveforms.cosine(
-                    amp=q.piAmp, freq=q.sb_freq, start=start,
-                    length=q.piLen['s']),
-                waveforms.sine(
-                    amp=q.piAmp, freq=q.sb_freq, start=start,
-                    length=q.piLen['s'])]
+
+        q['xy'] = XYnothing(q)
+        addXYgate(q, start, theta=np.pi, phi=0.)
+
         start += q.piLen[s] + 50e-9
         start += 100e-9
         start += q['qa_start_delay'][s]
@@ -457,9 +548,7 @@ def IQraw(sample, measure=0, stats=1024, update=False, analyze=False, reps=1,
         # start to run experiment
         data1 = runQ(qubits, devices)
 
-        # no pi pulse --> |0> ##
-        q.xy = [waveforms.square(amp=0), waveforms.square(amp=0)]
-
+        q['xy'] = XYnothing(q)
         data0 = runQ(qubits, devices)
 
         Is0 = np.real(data0[0])
@@ -479,6 +568,94 @@ def IQraw(sample, measure=0, stats=1024, update=False, analyze=False, reps=1,
     if update:
         dataProcess._updateIQraw2(
             data=data, Qb=Qb, dv=None, update=update, analyze=analyze)
+    return data
+
+
+@expfunc_decorator
+def IQraw210(
+        sample, measure=0, stats=1024, update=False, analyze=False,
+        reps=1, name='IQ raw210', des='', back=True):
+    sample, qubits, Qubits = loadQubits(sample, write_access=True)
+    q = qubits[measure]
+    Qb = Qubits[measure]
+
+    for qb in qubits:
+        qb.power_r = power2amp(qb['readout_amp']['dBm'])
+        qb.demod_freq = qb['readout_freq'][Hz]-qb['readout_mw_fc'][Hz]
+
+    q['stats'] = stats
+    # set some parameters name;
+    axes = [(reps, 'reps')]
+    deps = []
+    for i in range(3):
+        deps += [('Is', str(i), ''), ('Qs', str(i), '')]
+    kw = {'stats': stats}
+
+    # create dataset
+    dataset = sweeps.prepDataset(
+        sample, name+des, axes, deps, kw=kw, measure=measure)
+
+    def get_IQ(data):
+        Is = np.real(data[0])
+        Qs = np.imag(data[0])
+        return [Is, Qs]
+
+    def runSweeper(devices, para_list):
+        reps = para_list[0]
+        # |1>
+        start = 0
+        q.z = waveforms.square(
+            amp=q.zpa[V], start=start, length=q.piLen[s]+q.piLen21[s])
+
+        q['xy'] = XYnothing(q)
+        addXYgate(q, start, theta=np.pi, phi=0.)
+
+        start += q.piLen[s] + q.piLen21[s]
+        start += q['qa_start_delay'][s]
+
+        for _qb in qubits:
+            _qb['experiment_length'] = start
+
+        q['do_readout'] = True
+
+        q.dc = DCbiasPulse(q)
+        q.r = readoutPulse(q)
+
+        # start to run experiment
+        data1 = runQ(qubits, devices)
+
+        # state 2
+        start = 0
+        q.z = waveforms.square(
+            amp=q.zpa['V'], start=start, length=q.piLen['s']+q.piLen21['s'])
+
+        q['xy'] = XYnothing(q)
+        addXYgate(q, start, theta=np.pi, phi=0.)
+        start += q.piLen['s']
+        addXYgate(
+            q, start, theta=np.pi, phi=0., piAmp='piAmp21', fq='f21',
+            piLen='piLen21')
+
+        start += q.piLen21['s']
+        start += q['qa_start_delay'][s]
+
+        data2 = runQ(qubits, devices)
+
+        # state 0
+        q.xy = [waveforms.square(amp=0), waveforms.square(amp=0)]
+        data0 = runQ(qubits, devices)
+
+        result = []
+        for data in [data0, data1, data2]:
+            result += get_IQ(data)
+        return result
+
+    collect, raw = True, True
+    axes_scans = gridSweep(axes)
+    results = RunAllExp(runSweeper, axes_scans, dataset, collect, raw)
+    data = np.asarray(results[0])
+    if update:
+        adjuster.IQ_center_multilevel(qubit=Qb, data=data)
     return data
 
 
@@ -785,11 +962,11 @@ def s21_dispersiveShift(
             amp=q.zpa[V], start=start, length=q.piLen[s]+100e-9)
         start += 50e-9
         q.xy = [waveforms.cosine(
-                    amp=q.piAmp, freq=q.xy_sb_freq, start=start,
-                    length=q.piLen[s]),
-                waveforms.sine(
-                    amp=q.piAmp, freq=q.xy_sb_freq, start=start,
-                    length=q.piLen[s])]
+            amp=q.piAmp, freq=q.xy_sb_freq, start=start,
+            length=q.piLen[s]),
+            waveforms.sine(
+            amp=q.piAmp, freq=q.xy_sb_freq, start=start,
+            length=q.piLen[s])]
         start += q.piLen[s] + 50e-9
         q['bias'] = bias
 
@@ -854,13 +1031,9 @@ def gene_binary(qNum, qLevel=2):
 
 def prep_Nqbit(qubits):
     for _q in qubits:
-        _q.channels = dict(_q['channels'])
         # _q.power_r = power2amp(_q['readout_amp']['dBm'])
-        _q.demod_freq = _q['readout_freq'][Hz]-_q['readout_mw_fc'][Hz]
-        _q.sb_freq = (_q['f10'] - _q['xy_mw_fc'])[Hz]
-
-        # _q.xy = [waveforms.NOTHING,waveforms.NOTHING]
-        # _q.z = waveforms.NOTHING
+        _q.demod_freq = _q['readout_freq']['Hz']-_q['readout_mw_fc']['Hz']
+        _q.sb_freq = (_q['f10'] - _q['xy_mw_fc'])['Hz']
     return
 
 
