@@ -175,6 +175,12 @@ def addXYgate(q, start, theta, phi):
                                  start=start, length=q.piLen[s], phase=phi)
     return
 
+def correct_zero(sample):
+    sample, qubits, Qubits = loadQubits(sample, write_access=True)
+    qc = qubitContext()
+    corr = qc.zero_correction
+    for qubit in qubits:
+        corr.correct_xy(qubit)
 
 @expfunc_decorator
 def s21_scan(sample, measure=0, stats=1024, freq=6.0*GHz, delay=0*ns, phase=0,
