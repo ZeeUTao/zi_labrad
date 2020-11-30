@@ -4,10 +4,10 @@ Resources for qubit and devices
 from zilabrad.pyle.workflow import switchSession
 from zilabrad.pyle.registry import RegistryWrapper
 
-from zilabrad.instrument.zurichHelper import zurich_qa, zurich_hd
+from zilabrad.instrument.zurichHelper import zurich_qa, zurich_hd, ziDAQ
 from zilabrad.instrument.servers.anritsu_MG3692C import AnritsuServer
 from zilabrad.util import singleton
-
+from zilabrad.instrument.corrector import correct
 
 import labrad
 
@@ -73,9 +73,18 @@ class qubitContext(object):
         self.servers_qa = self.get_servers('ziQA_id')
         self.servers_hd = self.get_servers('ziHD_id')
 
-        for qa_master in self.servers_qa.values():
-            break
-        self.servers_daq = qa_master.daq
+        self.servers_daq = ziDAQ().daq
+
+        self.registry_calibration = RegistryWrapper(self.cxn, ['','Zurich Calibration'])
+        self.init_correct()
+
+    def init_correct(self):
+        self.device_mapping_dict = dict(self.deviceInfo['ziQA_id'] +\
+                                        self.deviceInfo['ziHD_id'])
+        # example: {'qa_1':'dev2591','hd_1':'dev8334'}
+        self.zero_correction = correct.Zero_correction(
+            self.servers_daq, self.registry_calibration)
+        self.zero_correction.init_tables(self.device_mapping_dict)
 
     @staticmethod
     def getQubits_paras(qubits: dict, key: str):
