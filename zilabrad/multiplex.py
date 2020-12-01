@@ -190,15 +190,13 @@ def correct_zero(sample):
 @expfunc_decorator
 def s21_scan(sample, measure=0, stats=1024, freq=6.0*GHz, delay=0*ns, phase=0,
              mw_power=None, bias=None, power=None, zpa=0.0,
-             name='s21_scan', des='', back=False):
+             name='s21_scan', des=''):
     """
     s21 scanning
-
     Args:
         sample: select experimental parameter from registry;
         stats: Number of Samples for one sweep point;
     """
-    # load parameters
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
     q = qubits[measure]
     q.channels = dict(q['channels'])
@@ -260,8 +258,7 @@ def s21_scan(sample, measure=0, stats=1024, freq=6.0*GHz, delay=0*ns, phase=0,
 
     axes_scans = gridSweep(axes)
     result_list = RunAllExp(runSweeper, axes_scans, dataset)
-    if back:
-        return result_list
+
 
 
 @expfunc_decorator
@@ -1085,7 +1082,7 @@ def Nqubit_state(
 
 @expfunc_decorator
 def Qstate_tomo(
-        sample, rep=10, excite=[0, 1], name='tomoTest',
+        sample, rep=10, state=[0, 1], name='tomoTest',
         tbuffer=10e-9, des=''):
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
     num_q = len(qubits)
@@ -1094,49 +1091,61 @@ def Qstate_tomo(
     axes = [(reps, 'reps')]
     deps = tomo_deps(num_q)
     piLens = list(map(lambda q: q['piLen'], qubits))
-    dataset = sweeps.prepDataset(sample, name, axes, deps, kw={})
+    kw = {'state': state}
+    dataset = sweeps.prepDataset(sample, name, axes, deps, kw=kw)
     fid_matNq = read_correct_mat(qubits)
 
     def add_tomo_gate(qubits, idx_qst, start):
         angles = [0, np.pi/2, np.pi/2]
         phases = [0, 0, np.pi/2]
+        _base3 = number_to_base(idx_qst, 3)
+        idx_qst_base3 = [0]*(len(qubits)-len(_base3)) + _base3
         for i, _qt in enumerate(qubits):
-            dig_n = 3  # len(ops)
-            idx_pulse = (idx_qst % (dig_n**(1+2-i)))//(dig_n**(2-i))
+            idx_pulse = idx_qst_base3[i]
             theta = angles[idx_pulse]
             phi = phases[idx_pulse]
             addXYgate(_qt, start, theta, phi)
         return
 
+    def prepare_state(qubits, start):
+        for i, q in enumerate(qubits):
+            q['xy'] = XYnothing(q)
+            if state[i] == 1:
+                addXYgate(q, start, np.pi, 0.)
+            else:
+                addXYgate(q, start, 0., 0.)
+        return
+
+    def read_pulse(qubits, start):
+        for _q in qubits:
+            _q.r = readoutPulse(_q)
+            _q['experiment_length'] = start
+            _q['do_readout'] = True
+        set_qubitsDC(qubits, qubits[0]['experiment_length'])
+        return
+
+    def get_prob(data):
+        prob_raw = tunneling(qubits, data, level=2)
+        prob = np.asarray(np.dot(fid_matNq, prob_raw))[0]
+        return prob
+
     def runSweeper(devices, para_list):
         reps = para_list
         reqs = []
+        q_ref = qubits[0]
         for idx_qst in np.arange(3**len(qubits)):
             start = 0.
-            for i, q in enumerate(qubits):
-                q['xy'] = XYnothing(q)
-                if i in excite:
-                    addXYgate(q, start, np.pi, 0.)
-                else:
-                    addXYgate(q, start, 0., 0.)
-
+            prepare_state(qubits, start)
             start += np.max(piLens)['s'] + tbuffer
 
             add_tomo_gate(qubits, idx_qst, start)
             start += np.max(piLens)['s'] + tbuffer
-            start += q['qa_start_delay'][s]
+            start += q_ref['qa_start_delay']['s']
 
-            for _q in qubits:
-                _q.r = readoutPulse(_q)
-                _q['experiment_length'] = start
-                _q['do_readout'] = True
-
-            set_qubitsDC(qubits, qubits[0]['experiment_length'])
+            read_pulse(qubits, start)
             data = runQ(qubits, devices)
-            prob = tunneling(qubits, data, level=2)
-
-            prob2 = np.asarray(np.dot(fid_matNq, prob))[0]
-            reqs.append(prob2)
+            prob = get_prob(data)
+            reqs.append(prob)
         return np.hstack(reqs)
 
     axes_scans = gridSweep(axes)
@@ -1267,6 +1276,21 @@ def dependents_1q():
             ('I', '', ''), ('Q', '', ''),
             ('pro', '|1>', '')]
     return deps
+
+
+def number_to_base(n, b):
+    """
+    example:
+    n = 10, b = 3
+    return [1, 0, 1]
+    """
+    if n == 0:
+        return [0]
+    digits = []
+    while n:
+        digits.append(int(n % b))
+        n //= b
+    return digits[::-1]
 
 
 def processData_1q(data, q):

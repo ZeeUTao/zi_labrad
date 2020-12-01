@@ -545,7 +545,7 @@ def RamseyFFT(dh, idx, dv=None):
     return fm
 
 
-def state_tomo(dh, idx, dv=None):
+def state_tomo(dh, idx, dv=None, **kwargs):
     data = dh.getDataset(idx, dv)
     result = np.mean(data, axis=0)
     num_qst = int(result.shape[0]-1)
@@ -556,7 +556,7 @@ def state_tomo(dh, idx, dv=None):
     tomo.init_qst(tomo.tensor_combinations(tomo.tomo_ops, num_q), tomo_name)
 
     rho_cal = tomo.qst(Qk, tomo_name)
-    plotMat(np.abs(rho_cal))
+    plotMat(np.abs(rho_cal), colorbar=False, **kwargs)
     plt.title('Exp.')
     return rho_cal
 
