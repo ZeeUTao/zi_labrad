@@ -75,11 +75,12 @@ class qubitContext(object):
 
         self.servers_daq = ziDAQ().daq
 
-        self.registry_calibration = RegistryWrapper(self.cxn, ['','Zurich Calibration'])
+        self.registry_calibration = RegistryWrapper(
+            self.cxn, ['', 'Zurich Calibration'])
         self.init_correct()
 
     def init_correct(self):
-        self.device_mapping_dict = dict(self.deviceInfo['ziQA_id'] +\
+        self.device_mapping_dict = dict(self.deviceInfo['ziQA_id'] +
                                         self.deviceInfo['ziHD_id'])
         # example: {'qa_1':'dev2591','hd_1':'dev8334'}
         self.zero_correction = correct.Zero_correction(

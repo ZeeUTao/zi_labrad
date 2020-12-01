@@ -16,25 +16,43 @@ pip install -U scikit-learn"
     raise ImportError(_scikit_import_error)
 
 
+def color_generator(level):
+    """
+    example: colors = color_generator(level=3)
+    for i in range(3):
+        plt.scatter(1,1,color=next(colors)['color'])
+    """
+    if level >= 5:
+        colors = plt.rcParams["axes.prop_cycle"]()
+    else:
+        colors = ({'color': i} for i in ['b', 'r', 'g', 'purple'])
+    return colors
+
+
 def IQ_cali(
-        sample, dh, idx=0, idx_q=0, level=2, plot=True, update=True,
-        plot_scatter=False
+        sample, dh, idx=0, measure=0, n_cluster=None, plot=True, update=True,
+        plot_scatter=True, cmap='Greys', do_return=False
         ):
     """
     Args:
         dh: zilabrad.plots.dataProcess.datahelp
         idx: iq raw data index
-        level: number of clusters
-        idx_q: index for qubit, whose IQ center will be updated
+        level: number of clusters, default is len(data) //2,
+        for example, data is [I0,Q0,I1,Q1], then level = 4//2 = 2
+        measure: index for qubit, whose IQ center will be updated
     """
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
-    Q = Qubits[idx_q]
+    Q = Qubits[measure]
 
     data = dh.getDataset(idx)
+    _centers_average = np.mean(data, 0)
+    level = len(_centers_average)//2
+    if n_cluster is None:
+        n_cluster = level
+    centers_average = _centers_average.reshape(level, 2)
 
-    centers_average = np.mean(data, 0).reshape(level, 2)
-
-    def get_IQ_data(i): return data[:, [2*i, 2*i+1]]
+    def get_IQ_data(i):
+        return data[:, [2*i, 2*i+1]]
 
     def IQ_center_assign(center_state, centers):
         # center_state (array): the averaged IQ data
@@ -48,7 +66,7 @@ def IQ_cali(
         return np.int(idx[0])
 
     data_cluster = np.vstack(list(map(get_IQ_data, range(level))))
-    state_pred = KMeans(n_clusters=level).fit_predict(data_cluster)
+    state_pred = KMeans(n_clusters=n_cluster).fit_predict(data_cluster)
 
     _return = {}
 
@@ -69,20 +87,39 @@ def IQ_cali(
 
     centers_I, centers_Q = centers[idx_assign, 0], centers[idx_assign, 1]
 
-    if plot:
-        fig = plt.figure()
-        ax = fig.add_subplot(1, 1, 1)
-        _ = ax.hist2d(*data_cluster.T, bins=50, cmap='pink')
+    def plot_cali_center():
+        facecolor = 'w'
         for i in range(level):
+            color_i = next(colors)['color']
             ax.scatter(
                 centers_I[i],
-                centers_Q[i],
-                s=200, marker='X', label=i)
+                centers_Q[i], linewidth=2, facecolor=facecolor,
+                edgecolor=color_i, s=200, marker="*", label=i)
         plt.legend()
+        return
+
+    if plot:
+        colors = color_generator(level)
+        fig = plt.figure()
+        ax = fig.add_subplot(1, 1, 1)
+        data_hist2d = ax.hist2d(
+            *data_cluster.T, bins=50, cmap=cmap,
+            shading='auto')
+
+        plot_cali_center()
         plt.show()
+
     if plot_scatter:
-        for i in range(3):
-            plt.scatter(*data[:1000, [2*i, 2*i+1]].T, alpha=0.2, label=i)
+        colors = color_generator(level)
+        for i in range(level):
+            color_i = next(colors)['color']
+            plt.scatter(
+                *data[:1000, [2*i, 2*i+1]].T, alpha=0.2,
+                label=i, color=color_i)
+        plot_cali_center()
         plt.legend()
-    _return['centers'] = centers
-    return _return
+    # for test
+    if do_return:
+        _return['centers'] = centers
+        _return['data_hist2d'] = data_hist2d
+        return _return
