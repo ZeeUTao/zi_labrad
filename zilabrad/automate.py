@@ -46,9 +46,12 @@ def _tune_piamp(
     def func(x, a, b, c):
         return a*(np.sin(np.pi/2. * x/b))**2+c
     _piamp0 = Qubit[amp_key]
-    popt, pcov = curve_fit(func, xdata, ydata, bounds=(
-        [np.min(ydata), (1-_error)*_piamp0, 0.],
-        [np.max(ydata), (1+_error)*_piamp0, np.min(ydata)]))
+
+    popt, pcov = curve_fit(
+        func, xdata, ydata,
+        p0=[np.max(ydata)-np.min(ydata), _piamp0, np.min(ydata)]
+    )
+
     piamp = np.round(popt[1], 4)
     if plot:
         fig = plt.figure()
