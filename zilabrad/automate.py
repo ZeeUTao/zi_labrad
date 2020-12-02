@@ -5,8 +5,14 @@ dh: zilabrad.plots.dataProcess.datahelp
 """
 
 from zilabrad.instrument.QubitContext import loadQubits
+from zilabrad import multiplex as mp
 import numpy as np
 from matplotlib import pyplot as plt
+from scipy.optimize import curve_fit
+import time
+
+ar = mp.ar
+
 
 try:
     from sklearn.cluster import KMeans
@@ -29,10 +35,54 @@ def color_generator(level):
     return colors
 
 
+def _tune_piamp(
+    sample, dh, Qubit, idx=0, idx_pro=5, plot=True, update=True,
+    amp_key='piAmp', _error=0.2
+):
+    data = dh.getDataset(idx, None)
+    xdata = data[:, 0]
+    ydata = data[:, idx_pro]
+
+    def func(x, a, b, c):
+        return a*(np.sin(np.pi/2. * x/b))**2+c
+    _piamp0 = Qubit[amp_key]
+    popt, pcov = curve_fit(func, xdata, ydata, bounds=(
+        [np.min(ydata), (1-_error)*_piamp0, 0.],
+        [np.max(ydata), (1+_error)*_piamp0, np.min(ydata)]))
+    piamp = np.round(popt[1], 4)
+    if plot:
+        fig = plt.figure()
+        ax = fig.add_subplot(1, 1, 1)
+        plt.plot(xdata, ydata, 'ko')
+        plt.plot(xdata, func(xdata, *popt), 'r-')
+        plt.plot(piamp+xdata*0, ydata, 'b', linewidth=5)
+        plt.grid()
+        title = Qubit._dir[-1] + f': {amp_key}->{piamp}'
+        plt.title(title)
+        plt.show()
+    Qubit[amp_key] = piamp
+    return
+
+
+def tune_piamp(
+    sample, dh, idx=0, idx_pro=5, measure=0, amp_key='piAmp', steps=20
+):
+    sample, qubits, Qubits = loadQubits(sample, write_access=True)
+    Qubit = Qubits[measure]
+    piamp0 = Qubit[amp_key]
+    mp.rabihigh(
+        sample, piamp=ar[0.:2.*piamp0:2.*piamp0/steps],
+        measure=measure)
+    time.sleep(0.5)
+    _tune_piamp(
+        sample, dh, Qubit, idx=idx, idx_pro=idx_pro, plot=True, update=True,
+        amp_key=amp_key)
+
+
 def IQ_cali(
         sample, dh, idx=0, measure=0, n_cluster=None, plot=True, update=True,
         plot_scatter=True, cmap='Greys', do_return=False
-        ):
+):
     """
     Args:
         dh: zilabrad.plots.dataProcess.datahelp
