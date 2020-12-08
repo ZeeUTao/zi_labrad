@@ -24,20 +24,13 @@ def stop_device():
     """  close all device;
     """
     qContext = qubitContext()
-    serverDict = qContext.servers_qa
-    for key, server in serverDict.items():
+    zurich_devices = qContext.get_servers_group(type='zurich').values()
+    for server in zurich_devices:
         server.awg_close()
 
-    serverDict = qContext.servers_hd
-    for key, server in serverDict.items():
-        server.awg_close()
-
-    server = qContext.servers_microwave
-    IPdict = qContext.IPdict_microwave
-
-    for key, value in IPdict.items():
-        server.select_device(value)
-        server.output(False)
+    uwave_source = qContext.get_server(
+        type='microwave_source', name=None)
+    uwave_source.stop_all()
     return
 
 
@@ -117,10 +110,9 @@ def RunAllExperiment(function, iterable, dataset,
 def set_microwaveSource(freqList, powerList):
     """set frequency and power for microwaveSource devices
     """
-    # print(freqList[0],powerList[0])
-
     qContext = qubitContext()
-    server = qContext.servers_microwave
+    server = qContext.get_server(
+        type='microwave_source', name=None)
     IPdict = qContext.IPdict_microwave
 
     for i, key in enumerate(IPdict):
@@ -134,13 +126,14 @@ def set_microwaveSource(freqList, powerList):
 def makeSequence_readout(qubits):
     """
     waveServer: zilabrad.instrument.waveforms
-    This version only, consider one zurich_qa device
+    We assume all zurich_qa devices have the
+    same sampling rate.
     FS: sampling rates
     """
     qContext = qubitContext()
-    qa = qContext.servers_qa['qa_1']
-
+    qa = qContext.get_server('qa', 'qa_1')
     FS = qa.FS
+
     waveServer = waveforms.waveServer(device_id='0')
 
     wave_readout_func = [waveforms.NOTHING, waveforms.NOTHING]
@@ -168,9 +161,7 @@ def makeSequence_AWG(qubits):
     FS: sampling rates
     """
     qContext = qubitContext()
-    hds = qContext.servers_hd
-    hd = hds['hd_1']
-
+    hd = qContext.get_server('hd', 'hd_1')
     FS = hd.FS
 
     wave_AWG = []
@@ -235,7 +226,8 @@ def setupDevices(qubits):
     q_ref = qubits[0]
     # only run once in the whole experimental loop
     qContext = qubitContext()
-    qa = qContext.servers_qa['qa_1']
+    # qas = qContext.get_servers_group('qa')
+    qa = qContext.get_server('qa', 'qa_1')
 
     if 'isNewExpStart' not in q_ref:
         print('isNewExpStart, setupDevices')
@@ -276,9 +268,9 @@ def setupDevices(qubits):
 
 def runDevices(qubits, wave_AWG, wave_readout):
     qContext = qubitContext()
-    qas = qContext.servers_qa
-    qa = qas['qa_1']
-    hds = qContext.servers_hd
+    # qas = qContext.get_servers_group('qa')
+    qa = qContext.get_server('qa', 'qa_1')
+    hds = qContext.get_servers_group('hd')
 
     qubits_port = qContext.getPorts(qubits)
     wave_dict = awgWave_dict(ports=qubits_port, waves=wave_AWG)

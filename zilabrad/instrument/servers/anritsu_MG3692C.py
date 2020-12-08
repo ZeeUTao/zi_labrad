@@ -87,3 +87,9 @@ class AnritsuServer(object):
             return bool(eval(res))
         else:
             dev.write('outp %d' % int(state))
+
+    def stop_all(self):
+        for address in self.devices.keys():
+            self.select_device(address)
+            self.output(False)
+        return
