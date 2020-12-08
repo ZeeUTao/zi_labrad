@@ -4,15 +4,19 @@ Automatic calibration
 dh: zilabrad.plots.dataProcess.datahelp
 """
 
-from zilabrad.instrument.QubitContext import loadQubits
-from zilabrad import multiplex as mp
-import numpy as np
-from matplotlib import pyplot as plt
-from scipy.optimize import curve_fit
 import time
+from scipy.optimize import curve_fit
+from matplotlib import pyplot as plt
+import numpy as np
+from zilabrad import multiplex as mp
+from zilabrad.instrument.QubitContext import loadQubits
+from labrad.units import Unit, Value
 
 ar = mp.ar
-
+_unitSpace = ('V', 'mV', 'us', 'ns', 's', 'GHz',
+              'MHz', 'kHz', 'Hz', 'dBm', 'rad', 'None')
+V, mV, us, ns, s, GHz, MHz, kHz, Hz, dBm, rad, _l = [
+    Unit(s) for s in _unitSpace]
 
 try:
     from sklearn.cluster import KMeans
@@ -36,7 +40,7 @@ def color_generator(level):
 
 
 def _tune_piamp(
-    sample, dh, Qubit, idx=0, idx_pro=5, plot=True, update=True,
+    sample, dh, Qubit, idx=-1, idx_pro=5, plot=True, update=True,
     amp_key='piAmp', _error=0.2
 ):
     data = dh.getDataset(idx, None)
@@ -68,22 +72,103 @@ def _tune_piamp(
 
 
 def tune_piamp(
-    sample, dh, idx=0, idx_pro=5, measure=0, amp_key='piAmp', steps=20
+    sample, dh, idx=-1, idx_pro=5, measure=0, amp_key='piAmp', steps=30
 ):
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
     Qubit = Qubits[measure]
     piamp0 = Qubit[amp_key]
     mp.rabihigh(
         sample, piamp=ar[0.:2.*piamp0:2.*piamp0/steps],
-        measure=measure)
+        measure=measure, name='rabihigh '+amp_key)
     time.sleep(0.5)
     _tune_piamp(
         sample, dh, Qubit, idx=idx, idx_pro=idx_pro, plot=True, update=True,
         amp_key=amp_key)
 
 
+def tune_piamp21(
+    sample, dh, idx=-1, idx_pro=7, measure=0, amp_key='piAmp21', steps=30
+):
+    sample, qubits, Qubits = loadQubits(sample, write_access=True)
+    Qubit = Qubits[measure]
+    piamp0 = Qubit[amp_key]
+    mp.rabihigh21(
+        sample, piamp21=ar[0.:2.*piamp0:2.*piamp0/steps],
+        measure=measure, name='rabihigh '+amp_key)
+    time.sleep(0.5)
+    _tune_piamp(
+        sample, dh, Qubit, idx=idx, idx_pro=idx_pro, plot=True, update=True,
+        amp_key=amp_key)
+
+
+def _tune_freq(
+    sample, dh, Qubit, idx=0, idx_pro=5, plot=True, update=True,
+    _key='f10'
+):
+    """
+    Note: xdata is in MHz, e.g., ar[-40:40:2,MHz]
+    """
+    data = dh.getDataset(idx, None)
+    xdata = data[:, 0]
+    ydata = data[:, idx_pro]
+
+    n_data = len(xdata)
+    mean0 = 0.
+    sigma0 = sum(ydata*(xdata-mean0)**2)/n_data
+
+    def gauss(x, a, x0, sigma):
+        return a*np.exp(-(x-x0)**2/(2*sigma**2))
+    freq0 = Qubit[_key]
+
+    popt, pcov = curve_fit(
+        gauss, xdata, ydata,
+        p0=[1, mean0, sigma0]
+    )
+
+    freq_shift = np.round(popt[1], 2)
+    freq_new = freq0 + Value(freq_shift, 'MHz')
+    freq_new = Value(freq_new['GHz'], 'GHz')
+    if plot:
+        fig = plt.figure()
+        ax = fig.add_subplot(1, 1, 1)
+        plt.plot(xdata, ydata, 'ko:', label='data')
+        plt.plot(xdata, gauss(xdata, *popt), 'r-', linewidth=2)
+        plt.plot(freq_shift+xdata*0, ydata, 'b', linewidth=5)
+        plt.grid()
+        title = Qubit._dir[-1] + f': {_key}->{freq_new}'
+        plt.title(title)
+        plt.show()
+    if update:
+        Qubit[_key] = freq_new
+    return
+
+
+def tune_f10(
+    sample, dh, df=ar[-40:40:2, MHz], idx_pro=5, measure=0, _key='f10'
+):
+    sample, qubits, Qubits = loadQubits(sample, write_access=True)
+    Qubit = Qubits[measure]
+    mp.rabihigh(
+        sample, piamp=None, df=df, measure=measure,
+        name='rabihigh '+_key)
+    time.sleep(0.5)
+    _tune_freq(sample, dh, Qubit, idx=-1, idx_pro=idx_pro, _key=_key)
+
+
+def tune_f21(
+    sample, dh, df=ar[-40:40:2, MHz], idx_pro=7, measure=0, _key='f21'
+):
+    sample, qubits, Qubits = loadQubits(sample, write_access=True)
+    Qubit = Qubits[measure]
+    mp.rabihigh21(
+        sample, piamp21=None, df=df, measure=measure,
+        name='rabihigh '+_key)
+    time.sleep(0.5)
+    _tune_freq(sample, dh, Qubit, idx=-1, idx_pro=idx_pro, _key=_key)
+
+
 def IQ_cali(
-        sample, dh, idx=0, measure=0, n_cluster=None, plot=True, update=True,
+        sample, dh, idx=-1, measure=0, n_cluster=None, plot=True, update=True,
         plot_scatter=True, cmap='Greys', do_return=False
 ):
     """
@@ -142,6 +227,7 @@ def IQ_cali(
 
     def plot_cali_center():
         facecolor = 'w'
+        colors = color_generator(level)
         for i in range(level):
             color_i = next(colors)['color']
             ax.scatter(
@@ -152,7 +238,6 @@ def IQ_cali(
         return
 
     if plot:
-        colors = color_generator(level)
         fig = plt.figure()
         ax = fig.add_subplot(1, 1, 1)
         data_hist2d = ax.hist2d(
