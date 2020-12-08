@@ -70,26 +70,25 @@ def read_csvdata(file_name):
 
 
 class datahelp(object):
-    """ 
+    """
     helper to get data from specified path
     """
 
-    def __init__(self, path=None, session=None):
+    def __init__(self, session, dv=None):
+        self.dv = dv
+        if self.dv is None:
+            cxn = labrad.connect()
+            self.dv = cxn.data_vault
         self.dir = r'M:\Experimental Data'
-        self.path = path
 
-        if session is None:
-            self.session = _default_session
-        else:
-            self.session = session
-
-        if self.path is None:
-            _path = self.dir
-            for sub in self.session:
-                if sub is '':
-                    continue
-                _path = os.path.join(_path, sub+r'.dir')
-            self.path = _path
+        self.session = session
+        self.dv.cd(session)
+        _path = self.dir
+        for sub in self.session:
+            if sub is '':
+                continue
+            _path = os.path.join(_path, sub+r'.dir')
+        self.path = _path
 
     @staticmethod
     def listnames(path, ext='.csv'):
@@ -99,41 +98,26 @@ class datahelp(object):
         names = sorted((fn for fn in os.listdir(path) if fn.endswith(ext)))
         return names
 
-    def getDataset(self, idx, dv=None, name=None):
+    def getDataset(self, idx, name=None):
         """
-        Args: 
+        Args:
             idx (int): indicate the name of dataset ('00001 - Test1028_bias2d.csv')
             name (str): directly give the name like '00001 - Test1028_bias2d.csv'
             dv (labrad.dataVault)
-        Returns: 
+        Returns:
             data in .csv (numpy.array)
         """
-        if name:
-            path_data = os.path.join(self.path, name)
-            data = read_csvdata(path_data)
-            return data
+        _file_name = self.dv.dir()[1][idx]
+        _path = self.dv.open(_file_name)
+        data = self.dv.get()
 
-        if dv is None:
-            names = self.listnames(self.path, ext='.csv')
-            name = names[idx-1]
-            path_data = os.path.join(self.path, name)
-            data = read_csvdata(path_data)
-            return data
+        file_name = dsEncode(_file_name)
 
-        # use dataVault
-        # dv.cd(self.session)
+        path_full = [self.dir] + _path[0][1:]
+        path_folder = list(map(lambda x: x+'.dir', path_full))
+        path_abs = os.path.join(*path_folder, file_name)
 
-        if isinstance(idx, int):
-            raise VauleError('idx should be int')
-
-        if idx >= 1:
-            # to insure 1 represent '00001 - xxxx.csv'
-            idx = idx-1
-        name = dv.dir()[1][idx] + '.csv'
-        name = dsEncode(name)
-
-        path_data = os.path.join(self.path, name)
-        data = read_csvdata(path_data)
+        print('reading ', path_abs)
         return data
 
 
