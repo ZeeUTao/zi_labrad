@@ -175,11 +175,12 @@ class qubitContext(object):
             channels = dict(q['channels'])
             # the order must be 'dc,xy,z'! match the order in qubitServer
             if 'dc' in q.keys():
-                ports += [channels['dc']]
+                # if channels have not 'dc', ports += [None]
+                ports += [channels.get('dc')]
             if 'xy' in q.keys():
                 ports += [channels['xy_I'], channels['xy_Q']]
             if 'z' in q.keys():
-                ports += [channels['z']]
+                ports += [channels.get('z')]
         return ports
 
     def clearTempParas(self):

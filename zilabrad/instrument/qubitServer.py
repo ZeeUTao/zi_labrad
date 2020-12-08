@@ -317,6 +317,8 @@ def awgWave_dict(ports, waves):
     """
     port_dict = {}
     for k, wave in enumerate(waves):
+        if ports[k] is None:
+            continue
         dev_name = ports[k][0]
 
         awg_index = (ports[k][1]+1) // 2 - 1
