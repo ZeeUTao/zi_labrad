@@ -26,6 +26,17 @@ pip install -U scikit-learn"
     raise ImportError(_scikit_import_error)
 
 
+def set_paras(sample, key, value=None):
+    sample, qubits, Qubits = loadQubits(sample, write_access=True)
+    if value is None:
+        values = list(map(lambda q: q.get(key), qubits))
+        return values
+    else:
+        for Q in Qubits:
+            Q[key] = value
+        return value
+
+
 def color_generator(level):
     """
     example: colors = color_generator(level=3)

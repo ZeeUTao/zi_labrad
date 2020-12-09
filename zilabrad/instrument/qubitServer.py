@@ -185,7 +185,10 @@ def makeSequence_AWG(qubits):
 
         # line [DC]
         if 'dc' in q.keys():
-            wave_AWG += [waveServer.func2array(q.dc, start, end, FS)]
+            if q.get('dc') is None:
+                wave_AWG += [None]
+            else:
+                wave_AWG += [waveServer.func2array(q.dc, start, end, FS)]
 
         # line [xy] I,Q
         if 'xy' in q.keys():

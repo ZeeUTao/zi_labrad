@@ -153,10 +153,28 @@ def readoutPulse(q):
         freq=q['demod_freq'], start=0, length=length)
 
 
+def DCbias_via_offset(channel, bias: float):
+    if abs(bias) > 2.5:
+        raise ValueError("bias out of range (-2.5 V, 2.5 V)")
+    qContext = qubitContext()
+    hd = qContext.get_server('hd', channel[0])
+    daq = hd.daq
+    daq.setDouble('/{:s}/sigouts/{:d}/offset'.format(
+        hd.id, channel[1]-1), bias)
+    return
+
+
 def DCbiasPulse(q):
-    return waveforms.square(
-        amp=q['bias'], start=-q['bias_start']['s'],
-        end=q['bias_end']['s']+q['readout_len']['s']+q['experiment_length'])
+    channels = dict(q.channels)
+    if channels.get('dc') is None:
+        channel_z = channels.get('z')
+        DCbias_via_offset(channel_z, bias=q['bias']['V'])
+        return None
+    else:
+        return waveforms.square(
+            amp=q['bias'], start=-q['bias_start']['s'],
+            end=q['bias_end']['s']+q['readout_len']['s']+q['experiment_length']
+            )
 
 
 def XYnothing(q):
@@ -227,6 +245,10 @@ def s21_scan(sample, measure=0, stats=1024, freq=6.0*GHz, delay=0*ns, phase=0,
 
     def runSweeper(devices, para_list):
         freq, bias, zpa, power, mw_power, delay, phase = para_list
+        q['bias'] = Value(bias, 'V')
+        for _qb in qubits:
+            _qb.dc = DCbiasPulse(_qb)
+
         q['readout_amp'] = power*dBm
         q.power_r = power2amp(power)
 
@@ -234,15 +256,12 @@ def s21_scan(sample, measure=0, stats=1024, freq=6.0*GHz, delay=0*ns, phase=0,
         start = 0
         q.z = waveforms.square(amp=zpa)
         q.xy = [waveforms.square(amp=0), waveforms.square(amp=0)]
-        q['bias'] = bias
-
         start += delay
         start += 100e-9
         start += q['qa_start_delay']['s']
 
         for _qb in qubits:
             _qb['experiment_length'] = start
-            _qb.dc = DCbiasPulse(_qb)
 
         q['do_readout'] = True
         q.r = readoutPulse(q)
@@ -258,7 +277,6 @@ def s21_scan(sample, measure=0, stats=1024, freq=6.0*GHz, delay=0*ns, phase=0,
 
     axes_scans = gridSweep(axes)
     result_list = RunAllExp(runSweeper, axes_scans, dataset)
-
 
 
 @expfunc_decorator
@@ -301,6 +319,9 @@ def spectroscopy(
         sample, name+des, axes, deps, kw=kw, measure=measure)
 
     def runSweeper(devices, para_list):
+        for _qb in qubits:
+            _qb.dc = DCbiasPulse(_qb)
+
         freq, specAmp, specLen, bias, zpa = para_list
 
         q['xy_mw_fc'] = freq*Hz-sb_freq
@@ -323,7 +344,6 @@ def spectroscopy(
         q['experiment_length'] = start
         q['do_readout'] = True
 
-        q.dc = DCbiasPulse(q)
         q.r = readoutPulse(q)
 
         data = runQ([q], devices)
@@ -375,6 +395,9 @@ def rabihigh(sample, measure=0, stats=1024, piamp=None, piLen=None, df=0*MHz,
     q_copy = q.copy()
 
     def runSweeper(devices, para_list):
+        for _qb in qubits:
+            _qb.dc = DCbiasPulse(_qb)
+
         bias, zpa, df, piamp, piLen = para_list
         q['xy_mw_fc'] = q_copy['xy_mw_fc'] + df*Hz
 
@@ -398,16 +421,12 @@ def rabihigh(sample, measure=0, stats=1024, piamp=None, piLen=None, df=0*MHz,
         q['experiment_length'] = start
         q['do_readout'] = True
 
-        q.dc = DCbiasPulse(q)
         q.r = readoutPulse(q)
-
-        # start to run experiment
         data = runQ([q], devices)
         return processData_1q(data, q)
 
     axes_scans = gridSweep(axes)
     result_list = RunAllExp(runSweeper, axes_scans, dataset)
-    return
 
 
 @expfunc_decorator
