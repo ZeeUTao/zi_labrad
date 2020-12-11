@@ -122,7 +122,7 @@ def amp2power(amp):
 def set_qubitsDC(qubits, experiment_length):
     for _qb in qubits:
         _qb['experiment_length'] = experiment_length
-        _qb.dc = DCbiasPulse(_qb)
+        DCbiasPulse(_qb)
     return
 
 
@@ -136,14 +136,19 @@ def readoutPulse(q):
 
 
 def DCbiasPulse(q):
-    if abs(q['bias']['V']) > 2.5:
+    if type(q['bias']) in [float, int]:
+        bias = q['bias']
+    else:
+        bias = q['bias']['V']
+
+    if abs(bias) > 2.5:
         raise ValueError("bias out of range (-2.5 V, 2.5 V)")
     if 'z' not in q:
         q['z'] = NOTHING
 
     channels = dict(q.channels)
     pulse = waveforms.square(
-            amp=q['bias']['V'], start=-q['bias_start']['s'],
+            amp=bias, start=-q['bias_start']['s'],
             end=q['bias_end']['s']+q['readout_len']['s']+q['experiment_length']
             )
     if channels.get('dc') is None:
@@ -159,16 +164,18 @@ def XYnothing(q):
 def addXYgate(
         q, start, theta, phi, piAmp='piAmp', fq='f10',
         piLen='piLen'):
-    q.sb_freq = (q[fq] - q['xy_mw_fc'])['Hz']
-    amp = q[piAmp]*theta/np.pi
+    sb_freq = (q[fq] - q['xy_mw_fc'])['Hz']
+    phi_t = start*sb_freq*2.*np.pi + phi
+    if theta < 0:
+        phi_t += np.pi
+    amp = q[piAmp]*np.abs(theta)/np.pi
     length = q[piLen]['s']
     if 'xy' not in q:
         q['xy'] = XYnothing(q)
-
-    q['xy'][0] += waveforms.cosine(amp=amp, freq=q.sb_freq,
-                                   start=start, length=length, phase=phi)
-    q['xy'][1] += waveforms.sine(amp=amp, freq=q.sb_freq,
-                                 start=start, length=length, phase=phi)
+    q['xy'][0] += waveforms.cosine(amp=amp, freq=sb_freq,
+                                   start=start, length=length, phase=phi_t)
+    q['xy'][1] += waveforms.sine(amp=amp, freq=sb_freq,
+                                 start=start, length=length, phase=phi_t)
     return
 
 
@@ -264,7 +271,6 @@ def spectroscopy(
     """
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
     q = qubits[measure]
-    q.channels = dict(q['channels'])
     q.stats = stats
 
     if freq is None:
@@ -317,7 +323,7 @@ def spectroscopy(
         set_qubitsDC(qubits, q['experiment_length'])
         q.r = readoutPulse(q)
 
-        data = runQ([q], devices)
+        data = runQ(qubits, devices)[measure]
         return processData_1q(data, q)
 
     axes_scans = gridSweep(axes)
@@ -335,7 +341,6 @@ def rabihigh(sample, measure=0, stats=1024, piamp=None, piLen=None, df=0*MHz,
     """
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
     q = qubits[measure]
-    q.channels = dict(q['channels'])
 
     if bias is None:
         bias = q['bias']
@@ -367,7 +372,9 @@ def rabihigh(sample, measure=0, stats=1024, piamp=None, piLen=None, df=0*MHz,
 
     def runSweeper(devices, para_list):
         bias, zpa, df, piamp, piLen = para_list
-        q['xy_mw_fc'] = q_copy['xy_mw_fc'] + df*Hz
+        # since we only have one uwave source
+        for _qb in qubits:
+            _qb['xy_mw_fc'] = q_copy['xy_mw_fc'] + df*Hz
 
         start = 0
         q.z = waveforms.square(amp=zpa, start=start, length=piLen+100e-9)
@@ -384,13 +391,13 @@ def rabihigh(sample, measure=0, stats=1024, piamp=None, piLen=None, df=0*MHz,
         # additional readout gap, avoid hdawgs fall affect
         start += 100e-9
         # align qa & hd start
-        start += q['qa_start_delay'][s]
+        start += q['qa_start_delay']['s']
 
         q['experiment_length'] = start
         q['do_readout'] = True
         set_qubitsDC(qubits, q['experiment_length'])
         q.r = readoutPulse(q)
-        data = runQ([q], devices)
+        data = runQ(qubits, devices)[0]
         return processData_1q(data, q)
 
     axes_scans = gridSweep(axes)
@@ -494,7 +501,6 @@ def IQraw(sample, measure=0, stats=16384, update=False, analyze=False, reps=1,
     for qb in qubits:
         qb.power_r = power2amp(qb['readout_amp']['dBm'])
         qb.demod_freq = qb['readout_freq'][Hz]-qb['readout_mw_fc'][Hz]
-    q.sb_freq = (q['f10'] - q['xy_mw_fc'])[Hz]
 
     # set some parameters name;
     axes = [(reps, 'reps')]
@@ -777,7 +783,7 @@ def T1_visibility(sample, measure=0, stats=1024, delay=0.8*us,
         q.r = readoutPulse(q)
 
         # start to run experiment
-        data1 = runQ([q], devices)
+        data1 = runQ(qubits, devices)
         # analyze data and return
         _d_ = data1[0]
         # unit: dB; only relative strength;
@@ -788,13 +794,12 @@ def T1_visibility(sample, measure=0, stats=1024, delay=0.8*us,
         # ----- without pi pulse ----- ###
         q.xy = XYnothing(q)
         # start to run experiment
-        data0 = runQ([q], devices)
+        data0 = runQ(qubits, devices)
+        _d_ = data0[0]
         # analyze data and return
-        for _d_ in data0:
-            # unit: dB; only relative strength;
-            amp0 = np.abs(np.mean(_d_))/q.power_r
-            phase0 = np.angle(np.mean(_d_))
-            prob0 = tunneling([q], [_d_], level=2)
+        amp0 = np.abs(np.mean(_d_))/q.power_r
+        phase0 = np.angle(np.mean(_d_))
+        prob0 = tunneling([q], [_d_], level=2)
 
         # multiply channel should unfold to a list for return result
         result = [amp1, phase1, prob1[1], amp0, phase0, prob0[1]]
@@ -802,8 +807,6 @@ def T1_visibility(sample, measure=0, stats=1024, delay=0.8*us,
 
     axes_scans = gridSweep(axes)
     result_list = RunAllExp(runSweeper, axes_scans, dataset)
-    if back:
-        return result_list
 
 
 @expfunc_decorator
@@ -815,13 +818,12 @@ def ramsey(sample, measure=0, stats=1024, delay=ar[0:10:0.4, us],
     """
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
     q = qubits[measure]
-    q.channels = dict(q['channels'])
 
     q.power_r = power2amp(q['readout_amp']['dBm'])
     q.demod_freq = q['readout_freq'][Hz]-q['readout_mw_fc'][Hz]
     q.sb_freq = (q['f10'] - q['xy_mw_fc'])[Hz]
-    q.awgs_pulse_len += np.max(delay)  # add max length of hd waveforms
-
+    for qb in qubits:
+        qb['awgs_pulse_len'] += np.max(delay)
     # set some parameters name;
     axes = [(repetition, 'repetition'), (delay, 'delay'), (df, 'df'),
             (fringeFreq, 'fringeFreq'), (PHASE, 'PHASE')]
@@ -847,13 +849,12 @@ def ramsey(sample, measure=0, stats=1024, delay=ar[0:10:0.4, us],
             amp=q.zpa[V], start=start, length=delay+2*q.piLen[s]+100e-9)
         start += 50e-9
         q.xy = XYnothing(q)
-        addXYgate(q, start, theta=np.pi/2., phi=0. +
-                  start*(q.sb_freq)*2.*np.pi)
+        addXYgate(q, start, theta=np.pi/2., phi=0.)
 
         start += delay + q.piLen['s']
 
         addXYgate(q, start, theta=np.pi/2., phi=PHASE+fringeFreq *
-                  delay*2.*np.pi+start*(q.sb_freq)*2.*np.pi)
+                  delay*2.*np.pi)
 
         start += q.piLen[s] + 50e-9
         start += 100e-9 + q['qa_start_delay'][s]
@@ -864,7 +865,7 @@ def ramsey(sample, measure=0, stats=1024, delay=ar[0:10:0.4, us],
         q.r = readoutPulse(q)
 
         # start to run experiment
-        data = runQ([q], devices)
+        data = runQ(qubits, devices)
         # analyze data and return
         _d_ = data[0]
         # unit: dB; only relative strength;
@@ -880,8 +881,6 @@ def ramsey(sample, measure=0, stats=1024, delay=ar[0:10:0.4, us],
 
     axes_scans = gridSweep(axes)
     result_list = RunAllExp(runSweeper, axes_scans, dataset)
-    if back:
-        return result_list, q
 
 
 @expfunc_decorator
@@ -1284,14 +1283,12 @@ def processData_1q(data, q):
     """
     process single qubit IQ data into the daily used version
     """
-    # analyze data and return
-    _d_ = data[0]
     # only relative strength;
-    amp = np.abs(np.mean(_d_))/power2amp(q['readout_amp']['dBm'])
-    phase = np.angle(np.mean(_d_))
-    Iv = np.real(np.mean(_d_))
-    Qv = np.imag(np.mean(_d_))
-    prob = tunneling([q], [_d_], level=2)
+    amp = np.abs(np.mean(data))/power2amp(q['readout_amp']['dBm'])
+    phase = np.angle(np.mean(data))
+    Iv = np.real(np.mean(data))
+    Qv = np.imag(np.mean(data))
+    prob = tunneling([q], [data], level=2)
     # multiply channel should unfold to a list for return result
     result = [amp, phase, Iv, Qv, prob[1]]
     return result

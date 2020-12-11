@@ -258,31 +258,19 @@ def runDevices(qubits, wave_AWG, wave_readout):
     qContext = qubitContext()
     # qas = qContext.get_servers_group('qa')
     qa = qContext.get_server('qa', 'qa_1')
-    hds = qContext.get_servers_group('hd')
-
-    qubits_port = qContext.getPorts(qubits)
-    wave_dict = AWG_wave_dict(ports=qubits_port, waves=wave_AWG)
-
     # send data packet to multiply devices
     qa.send_waveform(waveform=wave_readout)
 
-    for dev_id, waveforms in wave_dict.items():
-        for awg in range(4):  # default 4 awgs in every zi hdawgs
-            port = list(waveforms[awg].keys())
-            wave = list(waveforms[awg].values())
-            if len(wave) == 1 or len(wave) == 2:
-                hds[dev_id].send_waveform(
-                    waveform=wave, awg_index=awg, port=port)
+    hds = qContext.get_servers_group('hd')
+    qubits_port = qContext.getPorts(qubits)
+    AWG_wave_dict = AWG_wave_dict_4x2(qubits_port, wave_AWG)
 
-            elif len(wave) > 2:
-                print('Too many port: %r' % port)
+    for (dev_name, awg_index), wave in AWG_wave_dict.items():
+        hd = hds[dev_name]
+        hd.send_waveform_4x2(
+            waveform=wave, awg_index=awg_index)
+        hd.awg_open(awgs_index=[awg_index])
 
-    for name, hd in hds.items():
-        if name not in wave_dict.keys():
-            continue
-        for k in range(4):
-            if len(wave_dict[name][k]) != 0:
-                hd.awg_open(awgs_index=[k])
     qa.awg_open()  # download experimental data
     _data = qa.get_data()
 
@@ -295,26 +283,44 @@ def runDevices(qubits, wave_AWG, wave_readout):
         return data_doubleChannel
 
 
-def AWG_wave_dict(ports, waves):
+def AWG_wave_dict_4x2(devices_info, waves):
     """ Combine waveform sequence and device info (name, port)
-    as dictionary. Hold empty dict if no wave in device's port.
+    as dictionary.
+    Args:
+        devices_info (list): [(dev_name, channel)], channel is in [1,2...8]
+        for example, [('hd_1', 3), ('hd_1', 4)]
     Return:
-        port_dict = {'dev.id':[{port1:wave1,port2:wave2},{..},{..},{..}]}
+        port_dict = {
+            (dev_name, awg_index): [wave1, wave2]
+            }
     """
     port_dict = {}
-    for k, wave in enumerate(waves):
-        if ports[k] is None:
+    for wave in waves:
+        if wave is not None:
+            wave_len = len(wave)
+            break
+
+    for k, info in enumerate(devices_info):
+        if info is None:
             continue
-        dev_name = ports[k][0]
+        dev_name, channel = info
+        awg_index = (channel-1) // 2
+        _key = (dev_name, awg_index)
+        # initiate
+        if port_dict.get(_key) is None:
+            port_dict[_key] = [None, None]
 
-        awg_index = (ports[k][1]+1) // 2 - 1
-        # awg_index: (1~8)-->(0,1,2,3)
-        p_idx = (ports[k][1]+1) % 2 + 1
-        # port: (1~8) --> (1,2)
+        # add waves
+        wave_order = (channel-1) % 2
+        wave = waves[k]
+        # wave_order == 0 or 1
+        port_dict[_key][wave_order] = wave
 
-        if dev_name not in port_dict.keys():
-            port_dict[dev_name] = [{}, {}, {}, {}]
-        port_dict[dev_name][awg_index][p_idx] = wave
+    # fill zero array if wave_list still has None
+    for wave_list in port_dict.values():
+        for i in range(len(wave_list)):
+            if wave_list[i] is None:
+                wave_list[i] = np.zeros(wave_len)
 
     return port_dict
 

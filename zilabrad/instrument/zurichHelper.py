@@ -344,9 +344,8 @@ class zurich_qa(object):
         if self.noisy:
             print('\n AWG upload successful. Output enabled. AWG Standby. \n')
 
-
     def send_waveform(self, waveform, recursion=3):
-        """ 
+        """
         Args:
             waveform: all waveform in this device
             e.g.: [[1.,1.,...],[1.,1.,...]]
@@ -540,14 +539,17 @@ class zurich_hd:
 
         self.id = device_id
         self.obj_name = obj_name
-        self.noisy = False  # if open, will activate all print command during device working
+        self.noisy = False
+        # if open, will activate all print command during device working
         try:
             print('\nBring up %s in %s' % (self.id, labone_ip))
             self.daq = ziDAQ(labone_ip=labone_ip).daq
             self.daq.connectDevice(self.id, '1gbe')
             print(self.daq)
             self.FS = self.daq.getDouble(
-                '/{:s}/system/clocks/sampleclock/freq'.format(self.id))  # sample rate
+                '/{:s}/system/clocks/sampleclock/freq'.format(self.id))
+            # sample rate
+
             self.init_setup()
         except Exception as e:
             print("Failed to initialize [%s]" % self.id.upper())
@@ -564,12 +566,9 @@ class zurich_hd:
                 (self.id), 1.0],  # hold 1 amplitude
             ['/%s/awgs/0/outputs/0/modulation/mode' %
                 (self.id), 0],  # plain mode
-            # ['/%s/system/awg/channelgrouping'% self.id, 0],  ## use 4*2 channels
             ['/%s/awgs/*/time' % self.id, 0],  # use maximum sample rate
-            # ['/%s/awgs/0/userregs/0'           % self.id, 0],
-            # ['/%s/system/clocks/sampleclock/freq' % self.id, self.FS],
             ['/%s/system/clocks/referenceclock/source' %
-                self.id, 1],  # set ref clock mode in 'External'
+                self.id, 1],  # set ref clock mode as 'External'
             ['/%s/awgs/0/dio/strobe/slope' % self.id, 0],
             ['/%s/awgs/0/dio/strobe/index' % self.id, 15],
             ['/%s/awgs/0/dio/valid/index' % self.id, 0],
@@ -590,7 +589,8 @@ class zurich_hd:
         self.daq.setDouble('/{:s}/triggers/in/*/level'.format(self.id), 0.4)
         # close rerun
         self.daq.setInt('/{:s}/awgs/0/single'.format(self.id), 1)
-        # # Ensure that all settings have taken effect on the device before continuing.
+        # Ensure that all settings have taken effect on the device
+        # before continuing.
         # self.daq.sync()
         print('%s: Complete Initialization' % self.id.upper())
 
@@ -615,11 +615,11 @@ class zurich_hd:
         """
             grouping_index:
                 0 : 4x2 with HDAWG8; 2x2 with HDAWG4.
-                1: 2x4 with HDAWG8; 1x4 with HDAWG4.
+                1 : 2x4 with HDAWG8; 1x4 with HDAWG4.
                 2 : 1x8 with HDAWG8.
             set AWG grouping mode, following path:
-            '/dev_id/system/awg/channelgrouping', Configure 
-            how many independent sequencers, should run on 
+            '/dev_id/system/awg/channelgrouping', Configure
+            how many independent sequencers, should run on
             the AWG and how the outputs are grouped by sequencer.
         """
         grouping = ['4x2 with HDAWG8', '2x4 with HDAWG8', '1x8 with HDAWG8']
@@ -667,7 +667,7 @@ class zurich_hd:
                   (self.id, awg_index, self.waveform_length))
 
     # -- bulid and send AWGs
-    def awg_builder(self, waveform=[[0]], port=[], awg_index=0, loop=False):
+    def awg_builder(self, waveform: list, port: list, awg_index=0, loop=False):
         """ Build waveforms sequencer. Then compile and send it to devices.
         """
         # create waveform
@@ -707,11 +707,11 @@ class zurich_hd:
         self.update_pulse_length(awg_index=awg_index)
 
     def awg_upload_string(self, awg_program, awg_index=0):
-        """ awg_program: waveforms sequencer text
-            awg_index: this device's awgs sequencer index. 
-                       If awgs grouping == 4*2, this index 
-                       can be selected as 0,1,2,3
-            write into waveforms sequencer and compile it.
+        """ write into waveforms sequencer and compile it.
+        awg_program: waveforms sequencer text
+        awg_index: this device's awgs sequencer index.
+        If awgs grouping == 4*2, this index can be selected
+        as 0,1,2,3.
         """
         awgModule = self.daq.awgModule()
         awgModule.set('awgModule/device', self.id)
@@ -755,83 +755,46 @@ class zurich_hd:
             self.id, awg_index, index)
         self.daq.setVector(path, waveform_native)
 
-    def send_waveform(self, waveform=[[0], [0]], awg_index=0, port=[]):
-        """ (for awgs grouping mode 4*2 case.)
-            waveform: waveform list be sent
-            awg_index: awg index need to reload waveform
-            port: awg's port be used to reload
-            Here judge which awgs or port will be used
-            to reload. Fill zeros at the end of waveform 
-            to match the prior waveform length or compile 
-            sequencer again.
+    def _send_waveform_4x2(self, waveform: list, awg_index=0):
         """
-        _n_ = self.waveform_length[awg_index] - len(waveform[0])
-        if _n_ >= 0:
-            if len(waveform) == 1:  # only one port be used, another should fill zero
-                # port = 1 or 2, (3-port) is another one.
-                waveform_add = [[], []]
-                waveform_add[port[0] -
-                             1] = np.hstack((waveform[0], np.zeros(_n_)))
-                waveform_add[int(3-port[0]) -
-                             1] = np.zeros(self.waveform_length[awg_index])
-                # print('fill zeros in port ',(int(3-port[0])))
-            elif len(waveform) == 2:  # default port given in order
-                waveform_add = [np.hstack((w, np.zeros(_n_)))
-                                for w in waveform]
-            else:
-                print('Error waveform list (len=%r), Empty or too many.' %
-                      len(waveform))
-            try:
-                self.reload_waveform(waveform_add, awg_index=awg_index)
-            except Exception:
-                self.update_pulse_length(awg_index=awg_index)
-                _n_ = self.waveform_length[awg_index] - len(waveform[0])
-                if _n_ >= 0:
-                    if len(waveform) == 1:  # only one port be used, another should fill zero
-                        # port = 1 or 2, 3-port is another one.
-                        waveform_add = [[], []]
-                        waveform_add[port[0] -
-                                     1] = np.hstack((waveform[0], np.zeros(_n_)))
-                        waveform_add[int(
-                            3-port[0])-1] = np.zeros(self.waveform_length[awg_index])
-                    elif len(waveform) == 2:  # default port given in order
-                        waveform_add = [np.hstack((w, np.zeros(_n_)))
-                                        for w in waveform]
-                    else:
-                        print(
-                            'Error waveform list (len=%r), Empty or too many.' % len(waveform))
-                    self.reload_waveform(waveform_add, awg_index=awg_index)
-                else:
-                    print('Bulid %r-awg%d Sequencer(len=%r > %r)' % (self.id,
-                                                                     awg_index, len(waveform[0]), self.waveform_length[awg_index]))
-                    if len(waveform) == 1:
-                        # port = 1 or 2, (3-port) is another one.
-                        waveform_add = [[], []]
-                        waveform_add[port[0]-1] = waveform[0]
-                        waveform_add[int(3-port[0]) -
-                                     1] = np.zeros(len(waveform[0]))
-                    else:
-                        waveform_add = waveform
-                    t0 = time.time()
-                    self.awg_builder(waveform=waveform_add,
-                                     port=port, awg_index=awg_index)
-                    print('%r-awg%d builder: %.3f s' %
-                          (self.id, awg_index, time.time()-t0))
-        else:
-            print('Bulid [%s-AWG%d] Sequencer2 (len=%r > %r)' % (self.id,
-                                                                 awg_index, len(waveform[0]), self.waveform_length[awg_index]))
-            if len(waveform) == 1:
-                # port = 1 or 2, (3-port) is another one.
-                waveform_add = [[], []]
-                waveform_add[port[0]-1] = waveform[0]
-                waveform_add[int(3-port[0])-1] = np.zeros(len(waveform[0]))
-            else:
-                waveform_add = waveform
+        Args:
+            waveform (list): len(waveform)=2, for example, [[0],[0]]
+        Fill zeros at the end of waveform to match the prior waveform
+        length or compile sequencer again, if the new wave is longer.
+        """
+        if len(waveform) != 2:
+            raise ValueError("len(waveform) is not 2")
+        _length_diff = self.waveform_length[awg_index] - len(waveform[0])
+        if _length_diff < 0:
+            _info_build = 'Bulid [%s-AWG%d] Sequencer2 (len=%r > %r)' % (
+                self.id, awg_index, len(waveform[0]),
+                self.waveform_length[awg_index])
+            print(_info_build)
+
             t0 = time.time()
-            self.awg_builder(waveform=waveform_add, port=[
-                             1, 2], awg_index=awg_index)
+            self.awg_builder(
+                waveform=waveform, port=[1, 2],
+                awg_index=awg_index)
             print('[%s-AWG%d] builder: %.3f s' %
                   (self.id, awg_index, time.time()-t0))
+            return
+        else:
+            waveform_add = [
+                np.hstack((w, np.zeros(_length_diff))) for w in waveform
+                ]
+            self.reload_waveform(waveform_add, awg_index=awg_index)
+            return
+
+    def send_waveform_4x2(
+        self, waveform: list, awg_index=0,
+        iter_max=2
+    ):
+        for i in range(iter_max):
+            try:
+                return self._send_waveform_4x2(
+                    waveform, awg_index=awg_index)
+            except Exception:
+                self.update_pulse_length(awg_index=awg_index)
 
 
 def convert_awg_waveform(wave_list):
