@@ -271,7 +271,6 @@ def spectroscopy(
     """
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
     q = qubits[measure]
-    q.channels = dict(q['channels'])
     q.stats = stats
 
     if freq is None:
@@ -342,7 +341,6 @@ def rabihigh(sample, measure=0, stats=1024, piamp=None, piLen=None, df=0*MHz,
     """
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
     q = qubits[measure]
-    q.channels = dict(q['channels'])
 
     if bias is None:
         bias = q['bias']
@@ -374,7 +372,9 @@ def rabihigh(sample, measure=0, stats=1024, piamp=None, piLen=None, df=0*MHz,
 
     def runSweeper(devices, para_list):
         bias, zpa, df, piamp, piLen = para_list
-        q['xy_mw_fc'] = q_copy['xy_mw_fc'] + df*Hz
+        # since we only have one uwave source
+        for _qb in qubits:
+            _qb['xy_mw_fc'] = q_copy['xy_mw_fc'] + df*Hz
 
         start = 0
         q.z = waveforms.square(amp=zpa, start=start, length=piLen+100e-9)
@@ -818,13 +818,12 @@ def ramsey(sample, measure=0, stats=1024, delay=ar[0:10:0.4, us],
     """
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
     q = qubits[measure]
-    q.channels = dict(q['channels'])
 
     q.power_r = power2amp(q['readout_amp']['dBm'])
     q.demod_freq = q['readout_freq'][Hz]-q['readout_mw_fc'][Hz]
     q.sb_freq = (q['f10'] - q['xy_mw_fc'])[Hz]
-    q.awgs_pulse_len += np.max(delay)  # add max length of hd waveforms
-
+    for qb in qubits:
+        qb['awgs_pulse_len'] += np.max(delay)
     # set some parameters name;
     axes = [(repetition, 'repetition'), (delay, 'delay'), (df, 'df'),
             (fringeFreq, 'fringeFreq'), (PHASE, 'PHASE')]
@@ -882,8 +881,6 @@ def ramsey(sample, measure=0, stats=1024, delay=ar[0:10:0.4, us],
 
     axes_scans = gridSweep(axes)
     result_list = RunAllExp(runSweeper, axes_scans, dataset)
-    if back:
-        return result_list, q
 
 
 @expfunc_decorator
