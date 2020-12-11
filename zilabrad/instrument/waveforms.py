@@ -57,10 +57,12 @@ def convertUnits(**unitdict):
             return v
 
     def wrap(f):
-        args = inspect.getfullargspec(f)[0] # list of argument names
+        args = inspect.getfullargspec(f)[0]
         for arg in unitdict:
             if arg not in args:
-                raise Exception('function %s does not take arg "%s"' % (f, arg))
+                raise Exception(
+                    'function %s does not take arg "%s"' % (f, arg)
+                    )
         # unitdict maps argument names to units
         # posdict maps argument positions to units
         posdict = dict((i, unitdict[arg])
@@ -88,7 +90,7 @@ class waveServer(object):
     """
 
     def __init__(
-            self, device_id='0', all_length=1e-6, fs=1.8e9,
+            self, all_length=1e-6, fs=1.8e9,
             origin=0, name='default'):
         self.name = name
         self.fs = fs

@@ -535,7 +535,7 @@ class zurich_hd:
     and their obj_name (key) that has been created
     """
 
-    def __init__(self, obj_name='HD_1', device_id='dev8334',
+    def __init__(self, obj_name='hd_1', device_id='dev8334',
                  labone_ip='localhost'):
 
         self.id = device_id
@@ -594,9 +594,6 @@ class zurich_hd:
         # self.daq.sync()
         print('%s: Complete Initialization' % self.id.upper())
 
-    def reset_zi(self):
-        print('关机重启吧！！')
-
     # -- set & get HD parameter
     def awg_open(self, awgs_index=[0, 1, 2, 3]):
         # run specific AWG following awgs_index
@@ -609,9 +606,13 @@ class zurich_hd:
         # stop specific awg following awgs_index
         for i in awgs_index:
             self.daq.setInt('/{:s}/awgs/{:d}/enable'.format(self.id, i), 0)
+        # set all offsets as 0
+        for channel in range(8):
+            self.daq.setDouble('/{:s}/sigouts/{:d}/offset'.format(
+                self.id, channel), 0.)
 
     def awg_grouping(self, grouping_index=0):
-        """ 
+        """
             grouping_index:
                 0 : 4x2 with HDAWG8; 2x2 with HDAWG4.
                 1: 2x4 with HDAWG8; 1x4 with HDAWG4.

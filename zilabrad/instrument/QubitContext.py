@@ -57,10 +57,6 @@ class qubitContext(object):
         self.cxn = cxn
         if self.cxn is None:
             self.cxn = labrad.connect()
-        self._server_class = {
-            'ziQA_id': zurich_qa,
-            'ziHD_id': zurich_hd,
-        }
 
         self.deviceInfo = self.loadInfo(paths=['Servers', 'devices'])
         self.wiring = dict(self.deviceInfo.get('wiring'))
@@ -69,17 +65,57 @@ class qubitContext(object):
         self.servers_microwave = AnritsuServer(
             list(self.IPdict_microwave.values())
             )
-
-        self.servers_qa = self.get_servers('ziQA_id')
-        self.servers_hd = self.get_servers('ziHD_id')
-
+        self.servers_qa = self._get_zurich_servers('ziQA_id')
+        self.servers_hd = self._get_zurich_servers('ziHD_id')
         self.servers_daq = ziDAQ().daq
 
-        self.registry_calibration = RegistryWrapper(self.cxn, ['','Zurich Calibration'])
+        self.registry_calibration = RegistryWrapper(
+            self.cxn, ['', 'Zurich Calibration'])
         self.init_correct()
 
+    @property
+    def ADC_FS(self):
+        """ADC sampling rate
+        """
+        qa = self.get_server('qa', 'qa_1')
+        return qa.FS
+
+    @property
+    def DAC_FS(self):
+        """DAC sampling rate
+        """
+        hd = self.get_server('hd', 'hd_1')
+        return hd.FS
+
+    def get_server(self, type: str, name: str or None):
+        """return the object of server
+        example: get_server('qa', 'qa_1')
+        """
+        if type == 'qa':
+            return self.servers_qa[name]
+        elif type == 'hd':
+            return self.servers_hd[name]
+        elif type == 'daq':
+            return self.servers_daq
+        elif type == 'microwave_source':
+            return self.servers_microwave
+
+    def get_servers_group(self, type='qa'):
+        """return a collection of servers for the same type
+        (if they have more than ones)
+        """
+        if type == 'qa':
+            return self.servers_qa
+        elif type == 'hd':
+            return self.servers_hd
+        elif type == 'zurich':
+            return {
+                **self.servers_qa,
+                **self.servers_hd
+            }
+
     def init_correct(self):
-        self.device_mapping_dict = dict(self.deviceInfo['ziQA_id'] +\
+        self.device_mapping_dict = dict(self.deviceInfo['ziQA_id'] +
                                         self.deviceInfo['ziHD_id'])
         # example: {'qa_1':'dev2591','hd_1':'dev8334'}
         self.zero_correction = correct.Zero_correction(
@@ -106,7 +142,7 @@ class qubitContext(object):
         reg = RegistryWrapper(self.cxn, ['']+paths)
         return reg.copy()
 
-    def get_servers(self, name: str):
+    def _get_zurich_servers(self, name: str):
         """
         Args:
             name: deviceInfo key, 'ziQA_id', 'ziHD_id'
@@ -116,6 +152,10 @@ class qubitContext(object):
             Do not worry about the instance of the same device is
             recreated, which is set into a conditional singleton.
         """
+        self._server_class = {
+            'ziQA_id': zurich_qa,
+            'ziHD_id': zurich_hd,
+        }
 
         if name not in self._server_class:
             raise TypeError("No such device type %s" % (name))
@@ -129,14 +169,6 @@ class qubitContext(object):
             # here "=" is not an error, because the
             # class is a singletonMany (returns a dict of objects)
         return serversDict
-
-    def get_microwaveServer(self):
-        """
-        usually return anritsu_server
-        """
-        name = str(self.deviceInfo['microwave_server'])
-        server = self.cxn[name]
-        return server
 
     def getPorts(self, qubits):
         """
@@ -157,11 +189,12 @@ class qubitContext(object):
             channels = dict(q['channels'])
             # the order must be 'dc,xy,z'! match the order in qubitServer
             if 'dc' in q.keys():
-                ports += [channels['dc']]
+                # if channels have not 'dc', ports += [None]
+                ports += [channels.get('dc')]
             if 'xy' in q.keys():
                 ports += [channels['xy_I'], channels['xy_Q']]
             if 'z' in q.keys():
-                ports += [channels['z']]
+                ports += [channels.get('z')]
         return ports
 
     def clearTempParas(self):
@@ -174,5 +207,5 @@ class qubitContext(object):
         self.deviceInfo = self.loadInfo(paths=['Servers', 'devices'])
         self.wiring = dict(self.deviceInfo.get('wiring'))
 
-        self.servers_qa = self.get_servers('ziQA_id')
-        self.servers_hd = self.get_servers('ziHD_id')
+        self.servers_qa = self._get_zurich_servers('ziQA_id')
+        self.servers_hd = self._get_zurich_servers('ziHD_id')
