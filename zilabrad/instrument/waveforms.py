@@ -88,7 +88,7 @@ class waveServer(object):
     """
 
     def __init__(
-            self, device_id='0', all_length=1e-6, fs=1.8e9,
+            self, all_length=1e-6, fs=1.8e9,
             origin=0, name='default'):
         self.name = name
         self.fs = fs

@@ -73,6 +73,20 @@ class qubitContext(object):
             self.cxn, ['', 'Zurich Calibration'])
         self.init_correct()
 
+    @property
+    def ADC_FS(self):
+        """ADC sampling rate
+        """
+        qa = self.get_server('qa', 'qa_1')
+        return qa.FS
+
+    @property
+    def DAC_FS(self):
+        """DAC sampling rate
+        """
+        hd = self.get_server('hd', 'hd_1')
+        return hd.FS
+
     def get_server(self, type: str, name: str or None):
         """return the object of server
         example: get_server('qa', 'qa_1')
