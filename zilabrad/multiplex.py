@@ -143,7 +143,7 @@ def DCbiasPulse(q):
 
     channels = dict(q.channels)
     pulse = waveforms.square(
-            amp=q['bias'], start=-q['bias_start']['s'],
+            amp=q['bias']['V'], start=-q['bias_start']['s'],
             end=q['bias_end']['s']+q['readout_len']['s']+q['experiment_length']
             )
     if channels.get('dc') is None:
@@ -379,7 +379,7 @@ def rabihigh(sample, measure=0, stats=1024, piamp=None, piLen=None, df=0*MHz,
             amp=piamp, freq=q.sb_freq, start=start,
             length=piLen)]
         start += piLen + 50e-9
-        q['bias'] = bias
+        q['bias'] = bias*V
 
         # additional readout gap, avoid hdawgs fall affect
         start += 100e-9

@@ -17,7 +17,6 @@ from zilabrad.instrument.QubitContext import qubitContext
 from labrad.units import Unit, Value
 
 np.set_printoptions(suppress=True)
-_noisy_printData = False
 
 
 def stop_device():
@@ -52,10 +51,10 @@ def Unit2num(a):
         return a[a.unit]
 
 
-def RunAllExperiment(function, iterable, dataset,
-                     collect: bool = True,
-                     raw: bool = False,
-                     pipesize: int = 10):
+def RunAllExperiment(
+        function, iterable, dataset,
+        collect=True, raw=False, noisy=False
+        ):
     """ Define an abstract loop to iterate a funtion for iterable
 
     Example:
@@ -87,7 +86,7 @@ def RunAllExperiment(function, iterable, dataset,
     def wrapped():
         for paras in iterable:
             result = run(paras)
-            if _noisy_printData is True:
+            if noisy is True:
                 print(
                     str(np.round(result, 3))
                 )
