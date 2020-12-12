@@ -10,11 +10,11 @@ from zilabrad.util import singleton, singletonMany
 from zilabrad.instrument.waveforms import convertUnits
 
 
-def get_awg_program(
+def get_QA_program(
         sample_rate, number_port, wave_length, *args, **kwargs):
-    """
+    """awg program for labone
     Example:
-    awg_program = get_awg_program(sample_rate=int(1.8e9), number_port=2)
+    awg_program = get_QA_program(sample_rate=int(1.8e9), number_port=2)
     """
     wave_define_string = ""
     wave_play_string = ""
@@ -50,6 +50,49 @@ AWG_MONITOR_TRIGGER);// start demodulate
         '$wave_define_string', wave_define_string)
     awg_program = awg_program.replace(
         '$wave_play_string', wave_play_string)
+    return awg_program
+
+
+def get_HD_program(
+        sample_rate: int, number_port: int, wave_length: int, loop=False):
+    """
+    Return (str):
+        awg program for labone
+    """
+    def raw_program(
+        FS, define_str, play_str, loop
+    ):
+        if loop:
+            trigger_str = '//waitDigTrigger(1);'
+        else:
+            trigger_str = 'waitDigTrigger(1);'
+        program = (f"""
+const f_s = {FS};
+{define_str}
+while(1){"{"}
+{trigger_str}
+playWave({play_str});
+waitWave();
+{"}"}
+""")
+        return program
+
+    def wave_define_func(idx):
+        return f'wave w{idx} = zeros({wave_length});\n'
+
+    # O(n) for join,  str += str1+str2 can be O(n^2)
+    wave_define_str = "".join(
+        list(map(wave_define_func, range(number_port)))
+    )
+    wave_play_list = list(
+        map(lambda idx: f'{idx},w{idx},', range(number_port))
+    )
+    # remove last comma ","
+    wave_play_list[-1] = wave_play_list[-1][:-1]
+    wave_play_str = "".join(wave_play_list)
+
+    awg_program = raw_program(
+        sample_rate, wave_define_str, wave_play_str, loop)
     return awg_program
 
 
@@ -297,7 +340,7 @@ class zurich_qa(object):
         """ Build waveforms sequencer. Then compile and send it to devices.
         """
         # create default zeros waveform
-        awg_program = get_awg_program(
+        awg_program = get_QA_program(
             sample_rate=int(self.FS),
             number_port=number_port,
             wave_length=wave_length)
@@ -558,7 +601,9 @@ class zurich_hd:
     def init_setup(self):
         # four awg's waveform length, unit --> Sample Number
         self.waveform_length = [0, 0, 0, 0]
-        self.awg_grouping(grouping_index=0)  # index == 0 --> 4*2 grouping mode
+        self.grouping = 0
+        # index == 0 --> 4*2 grouping mode
+        self.awg_grouping(grouping_index=self.grouping)
         exp_setting = [
             ['/%s/sigouts/*/on' % (self.id), 1],  # open all signal port
             ['/%s/sigouts/*/range' % (self.id), 1],  # default output range: 1V
@@ -622,6 +667,7 @@ class zurich_hd:
             how many independent sequencers, should run on
             the AWG and how the outputs are grouped by sequencer.
         """
+        self.grouping = grouping_index
         grouping = ['4x2 with HDAWG8', '2x4 with HDAWG8', '1x8 with HDAWG8']
         self.daq.setInt(
             '/{:s}/system/awg/channelgrouping'.format(self.id), grouping_index)
@@ -658,8 +704,10 @@ class zurich_hd:
         if len(hdinfo) == 0:
             self.waveform_length[awg_index] = -1
         elif len(hdinfo) == 1:
-            self.waveform_length[awg_index] = int(
+            length = int(
                 len(hdinfo[0][1][0]['vector'])/2)  # consider two channel wave;
+            # all of the ports keep the same length
+            self.waveform_length = [length]*len(self.waveform_length)
         else:
             raise Exception('Unknown HD infomation:\n', hdinfo)
         if self.noisy:
@@ -667,44 +715,22 @@ class zurich_hd:
                   (self.id, awg_index, self.waveform_length))
 
     # -- bulid and send AWGs
-    def awg_builder(self, waveform: list, port: list, awg_index=0, loop=False):
-        """ Build waveforms sequencer. Then compile and send it to devices.
+    def _awg_builder(
+        self, waveform: list, port: list, awg_index=0, loop=False
+    ):
+        """ Build awg program for labone, then compile and send it to devices.
         """
-        # create waveform
-        wave_len = len(waveform[0])
-        define_str = 'wave wave0 = vect(_w_);\n'
-        str0 = ''
-        play_str = ''
-        if len(port) == 0:
-            port = np.arange(len(waveform))+1
+        build_wave_num = 2**(self.grouping+1)
+        wave_length = len(waveform[0])
 
-        j = 0
-        for i in port:
-            wf = waveform[j]
-            str0 = str0 + \
-                define_str.replace('0', str(i)).replace(
-                    '_w_', ','.join([str(x) for x in wf]))
-            play_str = play_str + (',' + str(i) + ',wave'+str(i))
-            j += 1
-        play_str = play_str[1:]
+        awg_program = get_HD_program(
+            sample_rate=self.FS, number_port=build_wave_num,
+            wave_length=wave_length, loop=loop)
 
-        awg_program = textwrap.dedent("""\
-        const f_s = _c0_;
-        $str0
-        while(1){
-        waitDigTrigger(1);
-        playWave($play_str);
-        waitWave();
-        }
-        """)
-        awg_program = awg_program.replace('$str0', str0)
-        awg_program = awg_program.replace('$play_str', play_str)
-        awg_program = awg_program.replace('_c0_', str(self.FS))
-        if loop:
-            awg_program = awg_program.replace(
-                'waitDigTrigger(1);', '//waitDigTrigger(1);')
-        self.awg_upload_string(awg_program, awg_index=awg_index)
-        self.update_pulse_length(awg_index=awg_index)
+        # complie index varies for different grouping
+        awg_index_group = awg_index//(2**self.grouping)
+        self.awg_upload_string(awg_program, awg_index=awg_index_group)
+        self.update_pulse_length(awg_index=awg_index_group)
 
     def awg_upload_string(self, awg_program, awg_index=0):
         """ write into waveforms sequencer and compile it.
@@ -755,10 +781,11 @@ class zurich_hd:
             self.id, awg_index, index)
         self.daq.setVector(path, waveform_native)
 
-    def _send_waveform_4x2(self, waveform: list, awg_index=0):
+    def _send_waveform(self, waveform: list, awg_index=0):
         """
         Args:
-            waveform (list): len(waveform)=2, for example, [[0],[0]]
+            waveform (list): len(waveform)=2, for example, [[0],[0]].
+            API of Zurich HD restrict this.
         Fill zeros at the end of waveform to match the prior waveform
         length or compile sequencer again, if the new wave is longer.
         """
@@ -772,7 +799,7 @@ class zurich_hd:
             print(_info_build)
 
             t0 = time.time()
-            self.awg_builder(
+            self._awg_builder(
                 waveform=waveform, port=[1, 2],
                 awg_index=awg_index)
             print('[%s-AWG%d] builder: %.3f s' %
@@ -781,17 +808,17 @@ class zurich_hd:
         else:
             waveform_add = [
                 np.hstack((w, np.zeros(_length_diff))) for w in waveform
-                ]
+            ]
             self.reload_waveform(waveform_add, awg_index=awg_index)
             return
 
-    def send_waveform_4x2(
+    def send_waveform(
         self, waveform: list, awg_index=0,
         iter_max=2
     ):
         for i in range(iter_max):
             try:
-                return self._send_waveform_4x2(
+                return self._send_waveform(
                     waveform, awg_index=awg_index)
             except Exception:
                 self.update_pulse_length(awg_index=awg_index)
