@@ -121,7 +121,7 @@ class Envelope(object):
             return Envelope(timeFunc, freqFunc, start=self.start, end=self.end)
     __rmul__ = __mul__
 
-    def __div__(self, other):
+    def __truediv__(self, other):
         if isinstance(other, Envelope):
             raise Exception("Hybrid time/fourier envelopes can only be divided by constants")
         else:
@@ -131,7 +131,7 @@ class Envelope(object):
                 return self.freqFunc(f) / other
             return Envelope(timeFunc, freqFunc, start=self.start, end=self.end)
         
-    def __rdiv__(self, other):
+    def __rtruediv__(self, other):
         if isinstance(other, Envelope):
             raise Exception("Hybrid time/fourier envelopes can only be divided by constants")
         else:

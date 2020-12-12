@@ -157,6 +157,14 @@ def DCbiasPulse(q):
         q['dc'] = pulse
 
 
+def clear_waveforms(qubits):
+    clear_keys = ['z', 'xy', 'dc', 'r']
+    for q in qubits:
+        for key in clear_keys:
+            if q.get(key) is not None:
+                q.pop(key)
+
+
 def XYnothing(q):
     return [NOTHING, NOTHING]
 
@@ -324,6 +332,7 @@ def spectroscopy(
         q.r = readoutPulse(q)
 
         data = runQ(qubits, devices)[measure]
+        clear_waveforms(qubits)
         return processData_1q(data, q)
 
     axes_scans = gridSweep(axes)
@@ -398,6 +407,7 @@ def rabihigh(sample, measure=0, stats=1024, piamp=None, piLen=None, df=0*MHz,
         set_qubitsDC(qubits, q['experiment_length'])
         q.r = readoutPulse(q)
         data = runQ(qubits, devices)[0]
+        clear_waveforms(qubits)
         return processData_1q(data, q)
 
     axes_scans = gridSweep(axes)
@@ -483,6 +493,7 @@ def rabihigh21(
         prob = tunneling([q], [_d_], level=3)
         # multiply channel should unfold to a list for return result
         result = [amp, phase, Iv, Qv, prob[0], prob[1], prob[2]]
+        clear_waveforms(qubits)
         return result
 
     axes_scans = gridSweep(axes)
@@ -545,6 +556,7 @@ def IQraw(sample, measure=0, stats=16384, update=False, analyze=False, reps=1,
         Qs1 = np.imag(data1)
 
         result = [Is0, Qs0, Is1, Qs1]
+        clear_waveforms(qubits)
         return result
 
     collect, raw = True, True
@@ -636,6 +648,7 @@ def IQraw210(
         result = []
         for data in [data0, data1, data2]:
             result += get_IQ(data)
+        clear_waveforms(qubits)
         return result
 
     collect, raw = True, True
@@ -710,7 +723,7 @@ def measureFidelity(
 
         prob0 = tunneling([q], [data0], level=2)
         prob1 = tunneling([q], [data1], level=2)
-
+        clear_waveforms(qubits)
         return [prob0[0], prob1[0], prob0[1], prob1[1]]
 
     axes_scans = gridSweep(axes)
@@ -803,6 +816,7 @@ def T1_visibility(sample, measure=0, stats=1024, delay=0.8*us,
 
         # multiply channel should unfold to a list for return result
         result = [amp1, phase1, prob1[1], amp0, phase0, prob0[1]]
+        clear_waveforms(qubits)
         return result
 
     axes_scans = gridSweep(axes)
@@ -877,6 +891,7 @@ def ramsey(sample, measure=0, stats=1024, delay=ar[0:10:0.4, us],
 
         # multiply channel should unfold to a list for return result
         result = [amp, phase, Iv, Qv, prob[1]]
+        clear_waveforms(qubits)
         return result
 
     axes_scans = gridSweep(axes)
@@ -987,6 +1002,7 @@ def s21_dispersiveShift(
         result = [amp0, phase0, Iv0, Qv0]
         result += [amp1, phase1, Iv1, Qv1]
         result += [np.abs((Iv1-Iv0)+1j*(Qv1-Qv0))]
+        clear_waveforms(qubits)
         return result
 
     axes_scans = gridSweep(axes)
@@ -1060,6 +1076,7 @@ def Nqubit_state(
         set_qubitsDC(qubits, q_ref['experiment_length'])
         data = runQ(qubits, devices)
         prob = tunneling(qubits, data, level=2)
+        clear_waveforms(qubits)
         return prob
     axes_scans = gridSweep(axes)
     result_list = RunAllExp(runSweeper, axes_scans, dataset)
@@ -1132,6 +1149,7 @@ def Qstate_tomo(
             data = runQ(qubits, devices)
             prob = get_prob(data)
             reqs.append(prob)
+        clear_waveforms(qubits)
         return np.hstack(reqs)
 
     axes_scans = gridSweep(axes)
@@ -1185,6 +1203,7 @@ def qqiswap(sample, measure=0, delay=20*ns, zpa=None, name='iswap', des=''):
 
         data = runQ(qubits, devices)
         prob = tunneling(qubits, data, level=2)
+        clear_waveforms(qubits)
         return prob
 
     axes_scans = gridSweep(axes)

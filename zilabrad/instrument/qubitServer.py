@@ -18,6 +18,9 @@ from labrad.units import Unit, Value
 
 np.set_printoptions(suppress=True)
 
+logger = logging.getLogger(__name__)
+logger.setLevel('WARNING')
+
 
 def stop_device():
     """  close all device;
@@ -263,11 +266,11 @@ def runDevices(qubits, wave_AWG, wave_readout):
 
     hds = qContext.get_servers_group('hd')
     qubits_port = qContext.getPorts(qubits)
-    AWG_wave_dict = AWG_wave_dict_4x2(qubits_port, wave_AWG)
+    awg_waves = AWG_wave_dict(qubits_port, wave_AWG)
 
-    for (dev_name, awg_index), wave in AWG_wave_dict.items():
+    for (dev_name, awg_index), wave in awg_waves.items():
         hd = hds[dev_name]
-        hd.send_waveform_4x2(
+        hd.send_waveform(
             waveform=wave, awg_index=awg_index)
         hd.awg_open(awgs_index=[awg_index])
 
@@ -283,7 +286,7 @@ def runDevices(qubits, wave_AWG, wave_readout):
         return data_doubleChannel
 
 
-def AWG_wave_dict_4x2(devices_info, waves):
+def AWG_wave_dict(devices_info, waves):
     """ Combine waveform sequence and device info (name, port)
     as dictionary.
     Args:
