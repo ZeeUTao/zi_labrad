@@ -18,6 +18,9 @@ from labrad.units import Unit, Value
 
 np.set_printoptions(suppress=True)
 
+logger = logging.getLogger(__name__)
+logger.setLevel('WARNING')
+
 
 def stop_device():
     """  close all device;
