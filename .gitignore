@@ -1,5 +1,8 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
+.vscode/
+__jupterTest__/
+
 *.py[cod]
 *$py.class
 
@@ -7,6 +10,7 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+.ipynb
 .Python
 build/
 develop-eggs/
@@ -32,6 +36,11 @@ MANIFEST
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+
+# Sphinx documentation
+docs/_build/
+docs/python_apis
+docs/source/python_apis
 
 # Installer logs
 pip-log.txt
@@ -127,3 +136,4 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+*.exe

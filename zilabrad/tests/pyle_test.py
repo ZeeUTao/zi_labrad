@@ -2,134 +2,154 @@
 """tested codes
 """
 
-from pyle import sweeps
-import labrad
+from functools import wraps
+import logging
 import time
 import numpy as np
-from pyle.util import sweeptools as st
-from pyle.workflow import switchSession
-from pyle.pipeline import returnValue, FutureList
-from pyle.sweeps import checkAbort
 
+from zilabrad.instrument.qubitServer import loadQubits,Unit2SI,Unit2num
+from zilabrad.instrument.qubitServer import runQubits
+
+from zilabrad.instrument import qubitServer
+# for sweep/looping
+from zilabrad.pyle import sweeps
+from zilabrad.pyle.sweeps import gridSweep,checkAbort
+from zilabrad.pyle.util import sweeptools
+from zilabrad.pyle.workflow import switchSession
+# for physical units, GHz, ns, ...
 from labrad.units import Unit,Value
-V, mV, us, ns, GHz, MHz, dBm, rad = [Unit(s) for s in ('V', 'mV', 'us', 'ns', 'GHz', 'MHz', 'dBm', 'rad')]
-
-from importlib import reload
-
-ar = st.r
-cxn=labrad.connect()
-dv = cxn.data_vault
 
 
-    
-def loadQubits(sample, write_access=False):
-    """Get local copies of the sample configuration stored in the registry.
-    
-    Returns the local sample config, and also extracts the individual
-    qubit configurations, as specified by the sample['config'] list.  If
-    write_access is True, also returns the qubit registry wrappers themselves,
-    so that updates can be saved back into the registry.
-    """
-    Qubits = [sample[q] for q in sample['config']]
-    sample = sample.copy()
-    qubits = [sample[q] for q in sample['config']]
-    
-    # only return original qubit objects if requested
-    if write_access:
-        return sample, qubits, Qubits
-    else:
-        return sample, qubits
+_unitSpace = ('V','mV','us','ns','s','GHz','MHz','kHz','Hz','dBm','rad','None')
+V, mV, us, ns,s, GHz, MHz,kHz,Hz, dBm, rad,_l = [Unit(s) for s in _unitSpace]
+   
+ar = sweeptools.r
 
+_noisy_printData = True
 
-
-def gridSweep(axes):
-    # yield (all axes), (swept axes)
-    if not len(axes):
-        yield (), ()
-    else:
-        (param, _label), rest = axes[0], axes[1:]
-        if np.iterable(param): # TODO: different way to detect if something should be swept
-            for val in param:
-                for all, swept in gridSweep(rest):
-                    yield (val,) + all, (val,) + swept
+def runDummy(qubits,exp_devices):
+    data = np.array([])
+    for q in qubits:
+        if len(data) == 0:
+            data_new = np.random.random(q['stats']) + 1j*np.random.random(q['stats'])
+            data = data_new
         else:
-            for all, swept in gridSweep(rest):
-                yield (param,) + all, swept
+            data_new = np.random.random(q['stats']) + 1j*np.random.random(q['stats'])
+            data = np.vstack([data,data_new])
+    return data
 
-def dataset_create(dv,dataset):
-    """Create the dataset."""
-    dv.cd(dataset.path, dataset.mkdir)
-    print(dataset.dependents)
-    dv.new(dataset.name, dataset.independents, dataset.dependents)
-    if len(dataset.params):
-        dv.add_parameters(tuple(dataset.params))
+def RunAllExperiment(function,iterable,dataset,
+                     collect: bool = True,
+                     raw: bool = False,
+                     pipesize: int = 10):
+    """ Define an abstract loop to iterate a funtion for iterable
 
-
-        
-def s21_scan(sample,freq = ar[1.:6.:0.01,GHz],power = st.r[-1:-30:1,dBm],zpa =0.0,name = 'S21',des='',
-    measure=0,stats = 300,save=True):
+    Example:
+    prepare parameters: scanning axes, dependences and other parameters
+    start experiment with special sequences according to the parameters
     
-    # load qubits 
+    Args:
+        function: give special sequences, parameters
+        iterable: iterated over to produce values that are fed to function as parameters.
+        dataset: zilabrad.pyle.datasaver.Dataset, object for data saving
+        collect: if True, collect the result into an array and return it; else, return an empty list
+        raw: discard swept_paras if raw == True
+    """
+    def run(paras):
+        # pass in all_paras to the function
+        all_paras = [Unit2SI(a) for a in paras[0]]
+        swept_paras = [Unit2num(a) for a in paras[1]]
+        result = function(None,all_paras) # 'None' is just the old devices arg which is not used now 
+        if raw:
+            result_raws = np.asarray(result)
+            return result_raws.T
+        else:
+            result = np.hstack([swept_paras,result])
+            return result
+
+    def wrapped():
+        for paras in iterable:
+            result = run(paras)
+            if _noisy_printData == True:
+                print(
+                    str(np.round(result,3))
+                    )
+            yield result
+    
+
+    results = dataset.capture(wrapped())
+        
+    result_list = []
+    for result in results:
+        result_list.append(result)
+    
+    if collect:
+        return result_list
+        
+def RunAllDummy(*args):
+    exp_devices = [None]*4
+    _noisy_printData = False
+    data = RunAllExperiment(*args)
+    return data
+
+def stop_device():
+    logger.info('Stop running '%(time.time()-_t0_))
+
+def expfunc_decorator(func):
+    """
+    do some stuff before call the function (func) in our experiment
+    do stuffs.... func(*args) ... do stuffs
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        logger = logging.getLogger(func.__name__)
+#         check_device()
+        _t0_ = time.time()
+        start_ts = time.time()
+        result = func(*args, **kwargs)
+#         stop_device() ## stop all device running
+        logger.info('use time (s): %.2f '%(time.time()-_t0_))
+        return result
+    return wrapper
+
+@expfunc_decorator
+def testing_runQ(sample,measure=0,stats=1024,freq=6.0*GHz,delay=0*ns,power=-30.0*dBm,sb_freq=None,
+    name='virtual testing',des='',back=False):
+    """ testing runQubits looping
+    """
     sample, qubits, Qubits = loadQubits(sample, write_access=True)
     q = qubits[measure]
-    
-    # user input the parameters
-    axes = [(freq, 'freq'),(power,'power'),(zpa,'zpa')]
-    deps = []
-    deps.append(('I','',''))
-    deps.append(('Q','',''))
-    deps.append(('amp','',''))
-    deps.append(('phase','',''))
-
+    ## set some parameters name;
+    axes = [(freq,'freq'),(power,'power'),(delay,'delay')]
+    deps = [('Amp','','a.u.'),('Phase','','rad'),('I','',''),('Q','','')]
     kw = {'stats': stats}
-    
+
     # create dataset
-    dataset = sweeps.prepDataset(sample, name+des, axes, deps,measure=measure, kw=kw)
-    dataset_create(dv,dataset)
-    
-    indeps = dataset.independents
-    
-    print('11111')
-    def runQ(x):
-        """ virtual_adc, pretend running 
-        """
+    dataset = sweeps.prepDataset(sample, name+des, axes, deps,kw=kw)
+    # dataset_create(dataset)
+
+    def runSweeper(devices,para_list):
+        freq,power,delay = para_list
+        q.power_r = 10**(power/20-0.5)
+        data = runDummy([q],devices)
         time.sleep(0.01)
-        I,Q = np.sin(10*x)+0.2,np.cos(10*x)
-        return np.array([I,Q])  
+        for _d_ in data:
+            amp = np.mean(np.abs(_d_))/q.power_r ## unit: dB; only relative strength;
+            phase = np.mean(np.angle(_d_))
+            Iv = np.mean(np.real(_d_))
+            Qv = np.mean(np.imag(_d_))
+        result = [amp,phase,Iv,Qv]
+        return result 
 
-    def transUnit(args):
-        args_new = []
-        for a in args:
-            if type(a) is not Value:
-                args_new.append(a)
-            else:
-                args_new.append(a[a.unit])      
-        return args_new
-    
-    axes_scans = checkAbort(gridSweep(axes), prefix=[1])
-    for axes_scan in axes_scans:
-        (freq,power,zpa) = axes_scan[0]
-        
-        data = runQ(freq[freq.unit])
-        I = data[0]
-        Q = data[1]
-        amp = np.abs(I+1j*Q)
-        phase = np.angle(I+1j*Q)
-        data_deps = [I,Q,amp,phase]
-        
-        indeps_scan = axes_scan[1]
-        indeps_scan = transUnit(indeps_scan)
-        
-        data_send = indeps_scan + data_deps
-        
-        print(data_send)
-        dv.add(data_send)
-    
-    
-    return
+    axes_scans = checkAbort(gridSweep(axes), prefix=[1],func=stop_device)
+    result_list = RunAllDummy(runSweeper,axes_scans,dataset)
+    if back:
+        return result_list
 
-def run(user = 'hwh'):
-    # specify the sample, in registry   
-    ss = switchSession(cxn,user=user,session=None)  
-    s21_scan(ss)
+def run(ss=None):
+    if ss == None:
+        import labrad
+        cxn=labrad.connect()
+        ss = switchSession(cxn,user='hwh',session=None)
+    testing_runQ(ss,freq=ar[6.0:6.9:0.001,GHz])
     return

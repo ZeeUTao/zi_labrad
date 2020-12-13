@@ -15,8 +15,7 @@ import matplotlib.pyplot as plt
 from matplotlib import widgets
 from scipy import interpolate
 
-from labrad.units import Unit
-from labrad.types import Value
+from zilabrad.pyle.units import Unit,Value
 V, mV, us, ns, GHz, rad = [Unit(s) for s in ('V', 'mV', 'us', 'ns', 'GHz', 'rad')]
 
 
@@ -43,21 +42,23 @@ def IQ_center(qubit, data):# Ziyu 2020-10-06
         qubit['center|0>'] = [result['I0'], result['Q0']]
         qubit['center|1>'] = [result['I1'], result['Q1']]
 
-def IQ_center_multilevel(qubit, data):# Chao Song 2015-04-29
-    I0s, Q0s, I1s, Q1s = data.T
+def IQ_center_three_level(qubit, data):
+    I0s, Q0s, I1s, Q1s, I2s, Q2s = data.T
     traces = [{'x': I0s, 'y': Q0s, 'args': ('b.',)},
-              {'x': I1s, 'y': Q1s, 'args': ('r.',)}]
-    params = [{'name':'I0', 'val':qubit['center|0>'][0][''], 'range':(min(I0s),max(I0s)), 'axis':'x', 'color': 'b'},
-              {'name':'I1', 'val':qubit['center|1>'][0][''], 'range':(min(I1s),max(I1s)), 'axis':'x', 'color': 'k'},
-              {'name':'I2', 'val':qubit['center|2>'][0][''], 'range':(min(I1s),max(I1s)), 'axis':'x', 'color': 'y'},
-              {'name':'Q0', 'val':qubit['center|0>'][1][''], 'range':(min(Q0s),max(Q0s)), 'axis':'y', 'color': 'b'},
-              {'name':'Q1', 'val':qubit['center|1>'][1][''], 'range':(min(Q1s),max(Q1s)), 'axis':'y', 'color': 'k'},
-              {'name':'Q2', 'val':qubit['center|2>'][1][''], 'range':(min(Q1s),max(Q1s)), 'axis':'y', 'color': 'y'}]
+              {'x': I1s, 'y': Q1s, 'args': ('r.',)},
+              {'x': I2s, 'y': Q2s, 'args': ('g.',)}]
+    params = [{'name':'I0', 'val':qubit['center|0>'][0], 'range':(min(I0s),max(I0s)), 'axis':'x', 'color': 'b'},
+              {'name':'I1', 'val':qubit['center|1>'][0], 'range':(min(I1s),max(I1s)), 'axis':'x', 'color': 'r'},
+              {'name':'I2', 'val':qubit['center|2>'][0], 'range':(min(I2s),max(I2s)), 'axis':'x', 'color': 'g'},
+              {'name':'Q0', 'val':qubit['center|0>'][1], 'range':(min(Q0s),max(Q0s)), 'axis':'y', 'color': 'b'},
+              {'name':'Q1', 'val':qubit['center|1>'][1], 'range':(min(Q1s),max(Q1s)), 'axis':'y', 'color': 'r'},
+              {'name':'Q2', 'val':qubit['center|2>'][1], 'range':(min(Q2s),max(Q2s)), 'axis':'y', 'color': 'g'}]
     result = adjust(params, traces)
     if result is not None:
         qubit['center|0>'] = [Value(result['I0'],''), Value(result['Q0'],'')]
         qubit['center|1>'] = [Value(result['I1'],''), Value(result['Q1'],'')]
         qubit['center|2>'] = [Value(result['I2'],''), Value(result['Q2'],'')]
+
 
 def findMinimum(data,fit=True):
     if fit:
