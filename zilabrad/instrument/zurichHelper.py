@@ -48,18 +48,18 @@ const f_s = $sample_rate;
 $wave_define_string
 setTrigger(AWG_INTEGRATION_ARM);// initialize integration
 setTrigger(0b000);
-repeat (getUserReg(1)) {  // = qa.result_samples
+repeat (getUserReg(0)) {  // = qa.result_samples
         // waitDigTrigger(1,1);
         setTrigger(0b11); // trigger output: rise
         wait(5); // trigger length: 22.2 ns / 40 samples
         setTrigger(0b00); // trigger output: fall
-        wait(getUserReg(0)); // wait time -> adc_trig_delay
         playWave($wave_play_string);
+        wait(getUserReg(1)); // demod wait time -> qa demod start
         setTrigger(AWG_INTEGRATION_ARM + AWG_INTEGRATION_TRIGGER + \
 AWG_MONITOR_TRIGGER);// start demodulate
         setTrigger(AWG_INTEGRATION_ARM);// reset intergration
         waitWave();
-        wait(200e-6*f_s/8); // wait 200us
+        wait(getUserReg(2)); // wait relaxation (default 200us)
 }
     """)
     awg_program = awg_program.replace(
@@ -115,6 +115,30 @@ waitWave();
     return awg_program
 
 
+def convert_awg_waveform(wave_list):
+    """
+    Converts one or multiple arrays with waveform data to the native AWG
+    waveform format (interleaved waves and markers as uint16).
+    Waveform data can be provided as integer (no conversion) or floating point
+    (range -1 to 1) arrays.
+    Arguments:
+      wave1 (array): Array with data of waveform 1.
+      wave2 (array): Array with data of waveform 2.
+      ...
+    Returns:
+      The converted uint16 waveform is returned.
+    NOTE: waveform reload needs each two channel one by one.
+    """
+    def uint16_waveform(wave):  # Prepare waveforms
+        wave = np.asarray(wave)
+        if np.issubdtype(wave.dtype, np.floating):
+            return np.asarray((np.power(2, 15) - 1) * wave, dtype=np.uint16)
+        return np.asarray(wave, dtype=np.uint16)
+
+    data_tuple = (uint16_waveform(wave_list[0]), uint16_waveform(wave_list[1]))
+    return np.vstack(data_tuple).reshape((-2,), order='F')
+
+
 class qaSource(enum.Enum):
     """ Constants (int) for selecting result logging source """
     TRANS = 0
@@ -135,15 +159,18 @@ class qaSource(enum.Enum):
 class ziDAQ(object):
     """singleton class for zurich daq
     """
-
-    def __init__(self, connectivity=8004, labone_ip='localhost'):
+    def __init__(self,labone_ip='localhost'):
         # connectivity must 8004 for zurish instruments
-        self.daq = zhinst.ziPython.ziDAQServer(labone_ip, connectivity, 6)
+        self.daq = zhinst.ziPython.ziDAQServer(labone_ip,8004,6)
+        self.secret_mode(mode=1) ## (default) daq can be used by everyone.
 
     def secret_mode(self, mode=1):
         # mode = 1: daq can be created by everyone
         # mode = 0: daq only be used by localhost
         self.daq.setInt('/zi/config/open', mode)
+
+    def refresh_api(self,labone_ip):
+        self.daq = zhinst.ziPython.ziDAQServer(labone_ip,8004,6)
 
 
 @singletonMany
@@ -163,11 +190,10 @@ class zurich_qa(object):
                  labone_ip='localhost'):
         self.obj_name = obj_name
         self.id = device_id
-
         try:
             logger.info("\nBring up %s in %s" % (self.id, labone_ip))
             self.daq = ziDAQ(labone_ip=labone_ip).daq
-            self.daq.connectDevice(self.id, '1gbe')
+            self.connect()
             logger.info(self.daq)
             self.FS = 1.8e9 / \
                 (self.daq.getInt(
@@ -177,43 +203,55 @@ class zurich_qa(object):
             logger.error("Failed to initialize [%s]" % self.id.upper())
             raise e
 
+    # -- set device status
+    def connect(self):
+        self.daq.connectDevice(self.id, '1gbe')
+
+    def disconnect(self):
+        self.daq.disconnectDevice(self.id)
+
+    def refresh_api(self,labone_ip='localhost'):
+        self.daq = ziDAQ(labone_ip=labone_ip).daq
+
     def init_setup(self):
         """ initialize device settings.
         """
-        self.average = 1  # default 1, not average in device
-        self.result_samples = 128
-        self.qubit_frequency = []  # all demodulate frequency value
+        self.average = 1  # default 1, no average in device
+        self.result_samples = 1024
+        self.qubit_frequency = []  # all demodulate frequency; unit: Hz
         self.paths = []  # save result path, equal to channel number
-        self.waveform_length = 0
         # qa pulse length in AWGs; unit: sample number
-
-        self.integration_length = 0
+        self.waveform_length = 0
         # qa integration length; unit: sample number
-
-        # qa result mode, (default) integration--> return origin (I+iQ)
+        self.integration_length = 4096
+        # qa result mode: integration--> return origin (I+iQ)
         self.source = qaSource.INTEGRATION.value
-        self.set_qaSource_mode(self.source)
 
-        self.set_adc_trig_delay(0)  # delay after hd trigger, unit -> second
-        self.set_readout_delay(0)  # delay after qa pulse start, unit -> second
-        # length of qa's awgs and demodulation, unit --> second
-        self.set_pulse_length(0)
+        ## set experimental parameters ##
+        self.set_relaxation_length(relax_time=200e-6) ## unit: second
+        # self.set_demod_start(0) # set demod start delay after All device trigger
+        # self.set_demod_length(0) # set self.integration_length
 
-        # set deskew matrix
-        self._set_deskew_matrix([[1, 1], [1, 1]])
-        # set integration part
-        # set 0 -> standard mode to integration
+        # set qa demod module
+        self.set_result_samples() ## (default input) self.result_samples
+        self.set_qaSource_mode() ## (default input) self.source
+        # set integration mode: 0=standard mode, 1=spectroscopy mode;
         self.daq.setInt('/{:s}/qas/0/integration/mode'.format(self.id), 0)
-        # set output part
-        # awgs output mode: 0=plain
+
+        # set signal output (readin line)
+        # awgs output mode: 0=plain, 1=modulation; 
         self.daq.setInt('/{:s}/awgs/0/outputs/*/mode'.format(self.id), 0)
-        # output range 1.5 V_peak
-        self.daq.setDouble('/{:s}/sigouts/*/range'.format(self.id), 1.5)
-        # set input part
-        # input range 1V
+        # awgs hold maximum amplitude 1
+        self.daq.setDouble('/{:s}/awgs/0/outputs/*/amplitude', 1)
+        self.daq.setInt('/{:s}/sigouts/*/imp50', 0) ## close 50 Ohm output impedance
+        self.port_range(1.5,port=[1,2]) ## awg output range 1.5V(default);
+
+        # set signal input (readout line)
+        # input range 1V;  Range=[10mV,1.5V]
         self.daq.setDouble('/{:s}/sigins/*/range'.format(self.id), 1)
-        # 50 Ohm input impedance
+        # 50 Ohm input impedance (must open)
         self.daq.setInt('/{:s}/sigins/*/imp50'.format(self.id), 1)
+
         # set trigger part
         # open trig 1
         self.daq.setInt('/{:s}/triggers/out/0/source'.format(self.id), 32)
@@ -226,77 +264,13 @@ class zurich_qa(object):
         # Sample DIO data at 50 MHz
         self.daq.setInt('/{:s}/dios/0/extclk'.format(self.id), 2)
 
-        # run = 1 open AWG, run =0 close AWG
-        self.daq.setInt('/{:s}/sigouts/*/on'.format(self.id), 1)
+        ## open AWGs port output 
+        self.port_output(output=True)
         # close Rerun
         self.daq.setInt('/{:s}/awgs/0/single'.format(self.id), 1)
         logger.info('%s: Complete Initialization' % self.id)
 
-    def _set_deskew_matrix(self, matrix=[[1, 1], [1, 1]]):
-        self.daq.setDouble(
-            '/{:s}/qas/0/deskew/rows/0/cols/0'.format(self.id), matrix[0][0])
-        self.daq.setDouble(
-            '/{:s}/qas/0/deskew/rows/0/cols/1'.format(self.id), matrix[0][1])
-        self.daq.setDouble(
-            '/{:s}/qas/0/deskew/rows/1/cols/0'.format(self.id), matrix[1][0])
-        self.daq.setDouble(
-            '/{:s}/qas/0/deskew/rows/1/cols/1'.format(self.id), matrix[1][1])
-
-    # -- device parameters set & get
-    def set_result_samples(self, sample):
-        """ sample: repetition number
-            Meanwhile update repeat index in AWG sequencer
-            and QA result parameter.
-        """
-        self.result_samples = int(sample)
-        # send to device: Register 2
-        self.daq.setDouble(
-            '/{:s}/awgs/0/userregs/1'.format(self.id), self.result_samples)
-        self.daq.setInt('/{:s}/qas/0/result/length'.format(self.id),
-                        self.result_samples)  # results length
-
-    @convertUnits(delay='s')
-    def set_adc_trig_delay(self, delay):
-        ''' delay: hd pulse start --> qa pulse start
-            Here convert value from second to sample number,
-            8 samples as a unit.
-        '''
-        _adc_trig_delay_ = int(delay*self.FS/8)*8  # unit -> Sample Number
-        # send to device: Register 1
-        self.daq.setDouble(
-            '/{:s}/awgs/0/userregs/0'.format(self.id), _adc_trig_delay_/8)
-
-    @convertUnits(readout_delay='s')
-    def set_readout_delay(self, readout_delay):
-        ''' delay: qa pulse start --> qa integration start
-            Here convert value from second to sample number, 
-            4 samples as a unit.
-        '''
-        delay_sample = int(readout_delay*self.FS/4)*4  # unit: Sample Number
-        # send to device
-        self.daq.setDouble('/{:s}/qas/0/delay'.format(self.id),
-                           delay_sample)  # send to device
-
-    @convertUnits(length='s')
-    def set_pulse_length(self, length):
-        ''' length: set qa pulse length in AWGs,
-                    and set same length for demodulate.
-            INPUT: unit --> Second,
-            SAVE: unit --> Sample number
-            Demodulate has maximum length 4096.
-            Ignore exceeding part.
-        '''
-        if length > 4096/1.8:
-            logger.warning(
-                'QA pulse lenght too long ( %.1f>%.1f ns)' %
-                (length, 4096/1.8))
-            self.waveform_length = 4096  # set the maximum length
-        else:
-            # unit --> Sample Number
-            self.waveform_length = int(length*self.FS/8)*8
-        self.integration_length = self.waveform_length
-        # unit --> Sample Number
-
+    # -- set AWGs status
     def update_pulse_length(self):
         ''' Update self.waveform_length value via 
             daq.getList(), make sure send_waveform()
@@ -314,34 +288,6 @@ class zurich_qa(object):
         logger.info(
             '[%s] update_pulse_length: %r' % (self.id, self.waveform_length))
 
-    def set_qaSource_mode(self, mode):
-        if mode == qaSource.INTEGRATION.value:
-            self.daq.setInt(
-                '/{:s}/qas/0/integration/sources/*'.format(self.id), 0)
-            self.daq.setComplex('/{:s}/qas/0/rotations/*'.format(self.id), 1)
-            self.daq.setDouble(
-                '/{:s}/qas/0/deskew/rows/*/cols/*'.format(self.id), 1)
-        else:
-            for k in range(5):
-                self.daq.setInt(
-                    '/{:s}/qas/0/integration/sources/{:d}'.format(
-                        self.id, 2*k), 0)
-                self.daq.setInt(
-                    '/{:s}/qas/0/integration/sources/{:d}'.format(
-                        self.id, 2*k+1), 1)
-                self.daq.setComplex(
-                    '/{:s}/qas/0/rotations/{:d}'.format(
-                        self.id, 2*k), 1-1j)
-                self.daq.setComplex(
-                    '/{:s}/qas/0/rotations/{:d}'.format(
-                        self.id, 2*k+1), 1+1j)
-            self._set_deskew_matrix([[1, 0], [0, 1]])
-        self.source = mode
-        self.daq.setInt(
-            '/{:s}/qas/0/result/source'.format(self.id), self.source)
-        logger.info(
-            ' [%s] QA Source Mode: %s' % (self.id, qaSource.name.value[mode]))
-
     def awg_open(self):
         self.daq.syncSetInt('/{:s}/awgs/0/enable'.format(self.id), 1)
         logger.debug('\n AWG running. \n')
@@ -351,13 +297,36 @@ class zurich_qa(object):
         self.daq.unsubscribe(self.paths)
         self.daq.setInt('/{:s}/qas/0/result/enable'.format(self.id), 0)
 
-    # -- AWGs waveform
+    def port_output(self,output=True,port=[1,2]):
+        # output = 1, open AWG port; output = 0, close AWG port;
+        if isinstance(port, int):
+            port = [port]
+        for p in port:
+            self.daq.setInt('/{:s}/sigouts/{:d}/on'.format(self.id,int(p-1)), int(output))
+
+    @convertUnits(range_='V')
+    def port_range(self,range_=None,port=[1,2]):
+        # AWG output range = 1.5V or 150mV
+        # range_=None -> return current range from ZI device
+        if range_ == None:
+            self.range = [None,None]
+            for p in range(2):
+                self.range[p] = round(self.daq.getDouble(
+                                    '/{:s}/sigouts/{:d}/range'.format(self.id,int(p))),5)
+            return self.range
+        else:
+            if isinstance(port, int):
+                port = [port]
+            for p in port:
+                self.daq.setDouble('/{:s}/sigouts/{:d}/range'.format(self.id,int(p-1)), range_)
+
+    # -- send AWGs waveform
     def _awg_builder(self, number_port, wave_length, awg_index=0):
         """ Build waveforms sequencer. Then compile and send it to devices.
         """
         logger.info(
             'Bulid [%s-AWG0] Sequencer (len=%r > %r)' %
-            (self.id, len(waveform[0]), self.waveform_length))
+            (self.id, wave_length, self.waveform_length))
         t0 = time.time()
         # create default zeros waveform
         awg_program = get_QA_program(
@@ -365,12 +334,12 @@ class zurich_qa(object):
             number_port=number_port,
             wave_length=wave_length)
 
-        self.awg_upload_string(awg_program, awg_index=awg_index)
+        self._awg_upload_string(awg_program, awg_index=awg_index)
         self.update_pulse_length()  # updata self.waveform_lenght
         logger.info(
             '[%s-AWG0] builder: %.3f s' % (self.id, time.time()-t0))
 
-    def awg_upload_string(self, awg_program, awg_index=0):
+    def _awg_upload_string(self, awg_program, awg_index=0):
         """ awg_program: waveforms sequencer text
             awg_index: this device's awgs sequencer index. 
                        If awgs grouping == 4*2, this index 
@@ -436,7 +405,7 @@ class zurich_qa(object):
         else:
             waveform_add = [np.hstack((wf, np.zeros(_n_))) for wf in waveform]
             try:
-                self.reload_waveform(waveform=waveform_add)
+                self._reload_waveform(waveform=waveform_add)
             except Exception:
                 self.update_pulse_length()
                 self.send_waveform(
@@ -444,7 +413,7 @@ class zurich_qa(object):
                     recursion=recursion-1)
             return
 
-    def reload_waveform(self, waveform, awg_index=0, index=0):
+    def _reload_waveform(self, waveform, awg_index=0, index=0):
         """ waveform: (numpy.array) one/two waves with unit amplitude.
             awg_index: this devices awg sequencer index
             index: this waveform index in total sequencer
@@ -453,6 +422,98 @@ class zurich_qa(object):
         path = '/{:s}/awgs/{:d}/waveform/waves/{:d}'.format(
             self.id, awg_index, index)
         self.daq.setVector(path, waveform_native)
+
+    # -- set qa demod parameters
+    @convertUnits(readout_delay='s')
+    def set_relaxation_length(self,relax_time):
+        # send to device: Register 3
+        self.daq.setDouble(
+                    '/{:s}/awgs/0/userregs/2'.format(self.id), 
+                    int(relax_time*self.FS/8))
+
+    def set_result_samples(self, sample=None):
+        """ sample: repetition number
+            Meanwhile update repeat index in AWG sequencer
+            and QA result parameter.
+        """
+        if sample != None:
+            self.result_samples = sample
+        # send to device: Register 1
+        self.daq.setDouble(
+                    '/{:s}/awgs/0/userregs/0'.format(self.id),
+                    self.result_samples)
+        self.daq.setInt('/{:s}/qas/0/result/length'.format(self.id),
+                        self.result_samples)  # results length
+
+    @convertUnits(readout_delay='s')
+    def set_demod_start(self,demod_start):
+        ''' demod_start: All device trigger --> QA integration start
+            Here convert value from second to sample number, 
+            8 samples as a unit.
+        '''
+        # unit: Sample Number
+        # send to device: Register 1
+        self.daq.setInt(
+            '/{:s}/awgs/0/userregs/1'.format(self.id), int(demod_start*self.FS/8)*8)
+
+    @convertUnits(length='s')
+    def set_demod_length(self, length):
+        ''' length: set length for demodulate.
+            INPUT: unit --> Second,
+            SAVE: unit --> Sample number
+            Demodulate has maximum length 4096.
+            Ignore exceeding part.
+        '''
+        if int(length*self.FS) > 4096:
+            logger.warning(
+                'QA pulse lenght too long ( %.1f>%.1f ns)' %
+                (length, 4096/1.8))
+            self.waveform_length = 4096  # set the maximum length
+        else:
+        # unit --> Sample Number
+        self.integration_length = int(length*self.FS/4)*4
+
+    # -- set qa demod mode
+    def set_qaSource_mode(self, mode=None):
+        if mode == None:
+            mode = self.source
+        if mode == qaSource.INTEGRATION.value:
+            self.daq.setInt(
+                '/{:s}/qas/0/integration/sources/*'.format(self.id), 0)
+            self.daq.setComplex('/{:s}/qas/0/rotations/*'.format(self.id), 1)
+            self._set_deskew_matrix([[1, 1], [1, 1]])
+        else:
+            for k in range(5):
+                self.daq.setInt(
+                    '/{:s}/qas/0/integration/sources/{:d}'.format(
+                        self.id, 2*k), 0)
+                self.daq.setInt(
+                    '/{:s}/qas/0/integration/sources/{:d}'.format(
+                        self.id, 2*k+1), 1)
+                self.daq.setComplex(
+                    '/{:s}/qas/0/rotations/{:d}'.format(
+                        self.id, 2*k), 1-1j)
+                self.daq.setComplex(
+                    '/{:s}/qas/0/rotations/{:d}'.format(
+                        self.id, 2*k+1), 1+1j)
+            self._set_deskew_matrix([[1, 0], [0, 1]])
+        self.daq.setInt(
+            '/{:s}/qas/0/result/source'.format(self.id), self.source)
+        ## update 'self.source' info from ZI device
+        self.source = self.daq.getInt(
+            '/{:s}/qas/0/result/source'.format(self.id), self.source)        
+        logger.info(
+            ' [%s] QA Source Mode: %s' % (self.id, qaSource.name.value[self.source]))
+
+    def _set_deskew_matrix(self, matrix=[[1, 1], [1, 1]]):
+        self.daq.setDouble(
+            '/{:s}/qas/0/deskew/rows/0/cols/0'.format(self.id), matrix[0][0])
+        self.daq.setDouble(
+            '/{:s}/qas/0/deskew/rows/0/cols/1'.format(self.id), matrix[0][1])
+        self.daq.setDouble(
+            '/{:s}/qas/0/deskew/rows/1/cols/0'.format(self.id), matrix[1][0])
+        self.daq.setDouble(
+            '/{:s}/qas/0/deskew/rows/1/cols/1'.format(self.id), matrix[1][1])
 
     # -- set qa demodulation frequency (qubit sideband part)
     def set_qubit_frequency(self, frequency_list):
@@ -470,10 +531,10 @@ class zurich_qa(object):
                     channel number 5.' % n_ch)
             self.qubit_frequency[0:n_ch*2:2] = frequency_list[:5]
             self.qubit_frequency[1:n_ch*2:2] = frequency_list[:5]
-        self.set_all_integration()  # set integration weights
-        self.set_subscribe()  # set result paths
+        self._set_all_integration()  # set integration weights
+        self._set_subscribe()  # set result paths
 
-    def set_all_integration(self):
+    def _set_all_integration(self):
         w_index = np.arange(0, self.integration_length, 1)
         for channel, freq in enumerate(self.qubit_frequency):
             # assign real and image integration coefficient
@@ -492,7 +553,7 @@ class zurich_qa(object):
                 '/{:s}/qas/0/integration/weights/{}/imag'.format(
                     self.id, channel), w_imag)
 
-    def set_subscribe(self, source=None):
+    def _set_subscribe(self, source=None):
         """ set demodulate result parameters -> upload qa result's paths
         """
         if source is None:
@@ -508,18 +569,17 @@ class zurich_qa(object):
         # stert qa result module, wait value
         self.daq.setInt('/{:s}/qas/0/result/enable'.format(self.id), 1)
 
-        def get_path(
-            ch): return '/{:s}/qas/0/result/data/{:d}/wave'.format(self.id, ch)
+        def get_path(ch): 
+            return '/{:s}/qas/0/result/data/{:d}/wave'.format(self.id, ch)
         chs = range(len(self.qubit_frequency))
         self.paths = list(map(get_path, chs))
 
         logger.debug(f'Subscribed paths: {self.paths}')
         self.daq.subscribe(self.paths)
 
-    # -- readout result part
-    def acquisition_poll(self, daq, paths, num_samples, timeout=10.0):
+    # -- get demod result
+    def _acquisition_poll(self, daq, paths, num_samples, timeout=10.0):
         """ Polls the UHFQA for data.
-
         Args:
             paths (list): list of subscribed paths
             num_samples (int): expected number of samples
@@ -566,7 +626,7 @@ class zurich_qa(object):
         return {p: np.concatenate(v) for p, v in chunks.items()}
 
     def get_data(self):
-        data = self.acquisition_poll(
+        data = self._acquisition_poll(
             self.daq, self.paths, self.result_samples, timeout=10)
         return list(data.values())
 
@@ -586,84 +646,89 @@ class zurich_hd:
 
     def __init__(self, obj_name='hd_1', device_id='dev8334',
                  labone_ip='localhost'):
-
         self.id = device_id
         self.obj_name = obj_name
-
         try:
             logger.info('\nBring up %s in %s' % (self.id, labone_ip))
             self.daq = ziDAQ(labone_ip=labone_ip).daq
-            self.daq.connectDevice(self.id, '1gbe')
+            self.connect()
             logger.info(self.daq)
+            # sample rate
             self.FS = self.daq.getDouble(
                 '/{:s}/system/clocks/sampleclock/freq'.format(self.id))
-            # sample rate
-
             self.init_setup()
         except Exception as e:
             logger.error("Failed to initialize [%s]" % self.id.upper())
             raise e
 
+    # -- set device status
+    def connect(self):
+        self.daq.connectDevice(self.id, '1gbe')
+
+    def disconnect(self):
+        self.daq.disconnectDevice(self.id)
+
+    def refresh_api(self,labone_ip='localhost'):
+        self.daq = ziDAQ(labone_ip=labone_ip).daq
+
     def init_setup(self):
         # four awg's waveform length, unit --> Sample Number
         self.waveform_length = [0, 0, 0, 0]
-        self.grouping = 0
-        # index == 0 --> 4*2 grouping mode
-        self.awg_grouping(grouping_index=self.grouping)
-        exp_setting = [
-            ['/%s/sigouts/*/on' % (self.id), 1],  # open all signal port
-            ['/%s/sigouts/*/range' % (self.id), 1],  # default output range: 1V
-            ['/%s/awgs/0/outputs/*/amplitude' %
-                (self.id), 1.0],  # hold 1 amplitude
-            ['/%s/awgs/0/outputs/0/modulation/mode' %
-                (self.id), 0],  # plain mode
-            ['/%s/awgs/*/time' % self.id, 0],  # use maximum sample rate
-            ['/%s/system/clocks/referenceclock/source' %
-                self.id, 1],  # set ref clock mode as 'External'
-            ['/%s/awgs/0/dio/strobe/slope' % self.id, 0],
-            ['/%s/awgs/0/dio/strobe/index' % self.id, 15],
-            ['/%s/awgs/0/dio/valid/index' % self.id, 0],
-            ['/%s/awgs/0/dio/valid/polarity' % self.id, 2],
-            ['/%s/awgs/0/dio/mask/value' % self.id, 7],  # 111 三位qubit results
-            ['/%s/awgs/0/dio/mask/shift' % self.id, 1],
-            ['/%s/raw/dios/0/extclk' % self.id, 2]
-        ]
-        self.daq.set(exp_setting)
-        # digital trigger 1 slope: rise
-        self.daq.setInt('/{:s}/awgs/0/auxtriggers/0/slope'.format(self.id), 1)
-        # DigTrigger --> trigger in 1
-        self.daq.setInt(
-            '/{:s}/awgs/0/auxtriggers/0/channel'.format(self.id), 0)
-        # DIO trigger in, set impedance
+        self.update_pulse_length() ## update current 'waveform_length' from ZI device
+        self.port_output(output=True) # open all signal output port
+        self.port_range(range_=1) # default output range: 1V
+
+        self.awg_grouping(grouping_index=0) # (default) index == 0 --> 4*2 grouping mode
+        # [AWG 0~3] digital trigger 1&2: slope --> rise
+        self.daq.setInt('/{:s}/awgs/*/auxtriggers/*/slope'.format(self.id), 1)
+        # (DIO) trigger in, set 50 Ohm impedance
         self.daq.setInt('/{:s}/triggers/in/*/imp50'.format(self.id), 0)
-        # trigger threshold level
-        self.daq.setDouble('/{:s}/triggers/in/*/level'.format(self.id), 0.4)
+
+        # use maximum sample rate in AWG sequence
+        self.daq.setInt('/{:s}/awgs/*/time'.format(self.id), 0)
+        # set ref clock mode as 'External'
+        self.daq.setInt('/{:s}/system/clocks/referenceclock/source'.format(self.id), 1) 
+        # awgs hold maximum amplitude 1
+        self.daq.setInt('/{:s}/awgs/0/outputs/*/amplitude'.format(self.id), 1.0) 
+        # awgs output mode: 0=plain, 1=modulation; 
+        self.daq.setInt('/{:s}/awgs/0/outputs/0/modulation/mode'.format(self.id), 0)  
+
+        self._unknown_settings()
+
         # close rerun
         self.daq.setInt('/{:s}/awgs/0/single'.format(self.id), 1)
-        # Ensure that all settings have taken effect on the device
-        # before continuing.
-        # self.daq.sync()
+        # Ensure that all settings have taken effect on the device before continuing.
+        ### self.daq.sync()
         logger.info('%s: Complete Initialization' % self.id.upper())
 
-    # -- set & get HD parameter
+    def _unknown_settings(self)
+        ## Unknown settings were suggested by ZI engineer
+        self.daq.setInt('/%s/awgs/0/dio/strobe/slope'.format(self.id), 0)
+        self.daq.setInt('/%s/awgs/0/dio/strobe/index'.format(self.id), 15)
+        self.daq.setInt('/%s/awgs/0/dio/valid/index'.format(self.id), 0)
+        self.daq.setInt('/%s/awgs/0/dio/valid/polarity'.format(self.id), 2)
+        self.daq.setInt('/%s/awgs/0/dio/mask/value'.format(self.id), 7)  # 111 三位qubit results
+        self.daq.setInt('/%s/awgs/0/dio/mask/shift'.format(self.id), 1)
+        self.daq.setInt('/%s/raw/dios/0/extclk'.format(self.id), 2)
+
+    # -- set awg status
     def awg_open(self, awgs_index=[0, 1, 2, 3]):
         # run specific AWG following awgs_index
+        if isinstance(awgs_index, int):
+            awgs_index = [awgs_index]
         for i in awgs_index:
             self.daq.setInt('/{:s}/awgs/{:d}/enable'.format(self.id, i), 1)
             logger.debug('%s AWG%d running.' % (self.id, i))
 
     def awg_close(self, awgs_index=[0, 1, 2, 3]):
         # stop specific awg following awgs_index
+        if isinstance(awgs_index, int):
+            awgs_index = [awgs_index]
         for i in awgs_index:
             self.daq.setInt('/{:s}/awgs/{:d}/enable'.format(self.id, i), 0)
-        # set all offsets as 0
-        for channel in range(8):
-            self.daq.setDouble('/{:s}/sigouts/{:d}/offset'.format(
-                self.id, channel), 0.)
 
     def awg_grouping(self, grouping_index=0):
-        """
-            grouping_index:
+        """ grouping_index:
                 0 : 4x2 with HDAWG8; 2x2 with HDAWG4.
                 1 : 2x4 with HDAWG8; 1x4 with HDAWG4.
                 2 : 1x8 with HDAWG8.
@@ -672,37 +737,44 @@ class zurich_hd:
             how many independent sequencers, should run on
             the AWG and how the outputs are grouped by sequencer.
         """
-        self.grouping = grouping_index
-        grouping = ['4x2 with HDAWG8', '2x4 with HDAWG8', '1x8 with HDAWG8']
-        self.daq.setInt(
-            '/{:s}/system/awg/channelgrouping'.format(self.id), grouping_index)
-        if grouping_index == 0:
-            for awg in range(4):
-                # set digital trigger
-                self.daq.setInt(
-                    '/{:s}/awgs/{:d}/auxtriggers/0/channel'.format(self.id, awg), int(awg*2))
-                # set trigger threshold
-                self.daq.setDouble(
-                    '/{:s}/triggers/in/{:d}/level'.format(self.id, int(awg*2)), 0.1)
-        if grouping_index == 1:
-            for awg in range(2):
-                # set digital trigger
-                self.daq.setInt(
-                    '/{:s}/awgs/{:d}/auxtriggers/0/channel'.format(self.id, awg), int(awg*4))
-                # set trigger threshold
-                self.daq.setDouble(
-                    '/{:s}/triggers/in/{:d}/level'.format(self.id, int(awg*4)), 0.2)
-        if grouping_index == 2:
-            # set digital trigger
+        grouping_name = ['4x2 with HDAWG8', '2x4 with HDAWG8', '1x8 with HDAWG8']
+
+        ## update 'grouping' info
+        self.grouping = self.daq.getInt(
+                '/{:s}/system/awg/channelgrouping'.format(self.id))
+
+        ## try to set grouping mode
+        if int(grouping_index) != int(self.grouping):
             self.daq.setInt(
-                '/{:s}/awgs/{:d}/auxtriggers/0/channel'.format(self.id, 0), 0)
-            # set trigger threshold
-            self.daq.setDouble(
-                '/{:s}/triggers/in/{:d}/level'.format(self.id, 0), 0.4)
-        self.daq.sync()
+                '/{:s}/system/awg/channelgrouping'.format(self.id), grouping_index)
+            if grouping_index == 0:
+                for awg in range(4):
+                    # set digital trigger
+                    self.daq.setInt(
+                        '/{:s}/awgs/{:d}/auxtriggers/0/channel'.format(self.id, awg), int(awg*2))
+                    # set trigger threshold
+                    self.daq.setDouble(
+                        '/{:s}/triggers/in/{:d}/level'.format(self.id, int(awg*2)), 0.1)
+            if grouping_index == 1:
+                for awg in range(2):
+                    # set digital trigger
+                    self.daq.setInt(
+                        '/{:s}/awgs/{:d}/auxtriggers/0/channel'.format(self.id, awg), int(awg*4))
+                    # set trigger threshold
+                    self.daq.setDouble(
+                        '/{:s}/triggers/in/{:d}/level'.format(self.id, int(awg*4)), 0.2)
+            if grouping_index == 2:
+                # set digital trigger
+                self.daq.setInt(
+                    '/{:s}/awgs/{:d}/auxtriggers/0/channel'.format(self.id, 0), 0)
+                # set trigger threshold
+                self.daq.setDouble(
+                    '/{:s}/triggers/in/{:d}/level'.format(self.id, 0), 0.4)
+            self.daq.sync()
+        ## show current grouping info
         logger.info(
             '[%s] channel grouping: %s' %
-            (self.id.upper(), grouping[grouping_index]))
+            (self.id.upper(), grouping_name[self.grouping]))
 
     def update_pulse_length(self):
         for awg_index in range(4):
@@ -722,10 +794,50 @@ class zurich_hd:
             '[%s-AWG] update_pulse_length: %r' %
             (self.id, self.waveform_length))
 
+    def port_output(self,output=True,port=np.linspace(1,8,8)):
+        # output = 1, open AWG port; output = 0, close AWG port;
+        if isinstance(port, int):
+            port = [port]
+        for p in port:
+            self.daq.setInt('/{:s}/sigouts/{:d}/on'.format(self.id,int(p-1)), int(output))
+
+    @convertUnits(range_='V')
+    def port_range(self,range_=None,port=np.linspace(1,8,8)):
+        # AWG output range = 200mV,400mV,600mV,800mV,1V,2V,3V,4V,5V
+        # range_=None -> return current range from ZI device
+        if range_ == None:
+            self.range = [None]*8
+            for p in range(8):
+                self.range[p] = round(self.daq.getDouble(
+                                    '/{:s}/sigouts/{:d}/range'.format(self.id,int(p))),5)
+            return self.range
+        else:
+            if isinstance(port, int):
+                port = [port]
+            for p in port:
+                self.daq.setDouble(
+                    '/{:s}/sigouts/{:d}/range'.format(self.id,int(p-1)),range_)
+
+    @convertUnits(offset='V')
+    def port_offset(self,offset=None,port=np.linspace(1,8,8)):
+        ## set offset voltage to port; 
+        ## offset = None --> return 'offset' info from ZI device;
+        ## (minimum unit: 89.97uV in ZI device)
+        if offset == None:
+            self.offset = [None]*8
+            for p in range(8):
+                self.offset[p] = round(self.daq.getDouble(
+                                    '/{:s}/sigouts/{:d}/offset'.format(self.id, p)),8)
+        else:
+            if isinstance(port, int):
+                port = [port]
+            for p in port:
+                self.daq.setDouble(
+                    '/{:s}/sigouts/{:d}/offset'.format(self.id,int(p-1)), offset)
+
     # -- bulid and send AWGs
     def _awg_builder(
-        self, waveform: list, awg_index=0, loop=False
-    ):
+        self, waveform: list, awg_index=0, loop=False):
         """ Build awg program for labone, then compile and send it to devices.
         """
         build_wave_num = 2**(self.grouping+1)
@@ -737,10 +849,10 @@ class zurich_hd:
 
         # complie index varies for different grouping
         awg_index_group = awg_index//(2**self.grouping)
-        self.awg_upload_string(awg_program, awg_index=awg_index_group)
+        self._awg_upload_string(awg_program, awg_index=awg_index_group)
         self.update_pulse_length()
 
-    def awg_upload_string(self, awg_program, awg_index=0):
+    def _awg_upload_string(self, awg_program, awg_index=0):
         """ write into waveforms sequencer and compile it.
         awg_program: waveforms sequencer text
         awg_index: this device's awgs sequencer index.
@@ -777,7 +889,7 @@ class zurich_hd:
                 i += 1
         logger.info('\n AWG upload successful. Output enabled. AWG Standby.')
 
-    def reload_waveform(self, waveform, awg_index=0, index=0):
+    def _reload_waveform(self, waveform, awg_index=0, index=0):
         """ waveform: (numpy.array) one/two waves with unit amplitude.
             awg_index: this devices awg sequencer index
             index: this waveform index in total sequencer
@@ -834,29 +946,7 @@ class zurich_hd:
             waveform_add = [
                 np.hstack((w, np.zeros(_length_diff))) for w in waveform
             ]
-            self.reload_waveform(waveform_add, awg_index=awg_index)
+            self._reload_waveform(waveform_add, awg_index=awg_index)
             return
 
 
-def convert_awg_waveform(wave_list):
-    """
-    Converts one or multiple arrays with waveform data to the native AWG
-    waveform format (interleaved waves and markers as uint16).
-    Waveform data can be provided as integer (no conversion) or floating point
-    (range -1 to 1) arrays.
-    Arguments:
-      wave1 (array): Array with data of waveform 1.
-      wave2 (array): Array with data of waveform 2.
-      ...
-    Returns:
-      The converted uint16 waveform is returned.
-    NOTE: waveform reload needs each two channel one by one.
-    """
-    def uint16_waveform(wave):  # Prepare waveforms
-        wave = np.asarray(wave)
-        if np.issubdtype(wave.dtype, np.floating):
-            return np.asarray((np.power(2, 15) - 1) * wave, dtype=np.uint16)
-        return np.asarray(wave, dtype=np.uint16)
-
-    data_tuple = (uint16_waveform(wave_list[0]), uint16_waveform(wave_list[1]))
-    return np.vstack(data_tuple).reshape((-2,), order='F')
