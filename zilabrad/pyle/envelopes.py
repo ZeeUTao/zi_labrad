@@ -28,7 +28,73 @@ import numpy as np
 from scipy.special import erf
 import matplotlib.pyplot as plt
 
-from zilabrad.pyle.util import convertUnits
+# from zilabrad.pyle.util import convertUnits
+import inspect
+import functools
+
+def convertUnits(**unitdict):
+    """
+    Decorator to create functions that automatically
+    convert arguments into specified units.  If a unit
+    is specified for an argument and the user passes
+    an argument with incompatible units, an Exception
+    will be raised.  Inside the decorated function, the
+    arguments no longer have any units, they are just
+    plain floats.  Not all arguments to the function need
+    to be specified in the decorator.  Those that are not
+    specified will be passed through unmodified.
+
+    Usage:
+
+    @convertUnits(t0='ns', amp=None)
+    def func(t0, amp):
+        <do stuff>
+
+    This is essentially equivalent to:
+
+    def func(t0, amp):
+        t0 = convert(t0, 'ns')
+        amp = convert(amp, None)
+        <do stuff>
+
+    The convert function is defined internally, and will
+    convert any quantities with units into the specified
+    units, or strip off any units if unit is None.
+    """
+    def convert(v, u):
+        # prefer over subclass check: isinstance(v, Value)
+        if hasattr(v, 'unit'):
+            if u is None:
+                return v[v.unit]
+            else:
+                return v[u]
+        else:
+            return v
+
+    def wrap(f):
+        args = inspect.getfullargspec(f)[0]
+        for arg in unitdict:
+            if arg not in args:
+                raise Exception(
+                    'function %s does not take arg "%s"' % (f, arg)
+                    )
+        # unitdict maps argument names to units
+        # posdict maps argument positions to units
+        posdict = dict((i, unitdict[arg])
+                       for i, arg in enumerate(args) if arg in unitdict)
+
+        @functools.wraps(f)
+        def wrapped(*a, **kw):
+            # convert positional arguments if they have a unit
+            a = [convert(val, posdict.get(i, None)) for i, val in enumerate(a)]
+            # convert named arguments if they have a unit
+            for arg, val in kw.items():
+                if arg in unitdict:
+                    kw[arg] = convert(val, unitdict[arg])
+            # call the function with converted arguments
+            return f(*a, **kw)
+        return wrapped
+    return wrap
 
 
 class Envelope(object):
@@ -45,8 +111,14 @@ class Envelope(object):
     
     Envelopes can be evaluated as functions of time or frequency using the
     fourier flag.  By default, they are evaluated as a function of time.
+    
+    2021.02.28  -- by Huang Wenhui
+        Abandon freqFunc part, and add some functions in class:
+            self.real(),self.imag(),
+            self.abs(),self.phase(),
+            self.conj(),self.dev();
     """
-    def __init__(self, timeFunc, freqFunc, start=None, end=None):
+    def __init__(self, timeFunc, freqFunc=None, start=None, end=None):
         self.timeFunc = timeFunc
         self.freqFunc = freqFunc
         self.start = start
@@ -146,6 +218,57 @@ class Envelope(object):
     
     def __pos__(self):
         return self
+
+    def real(self):
+        def timeFunc(t):
+            return np.real(self.timeFunc(t))
+        return Envelope(timeFunc, start=self.start, end=self.end)
+    def imag(self):
+        def timeFunc(t):
+            return np.imag(self.timeFunc(t))
+        return Envelope(timeFunc, start=self.start, end=self.end)
+    def abs(self):
+        def timeFunc(t):
+            return np.abs(self.timeFunc(t))
+        return Envelope(timeFunc, start=self.start, end=self.end)
+    def phase(self):
+        def timeFunc(t):
+            return np.angle(self.timeFunc(t))
+        return Envelope(timeFunc, start=self.start, end=self.end)
+    def conj(self):
+        def timeFunc(t):
+            return np.conj(self.timeFunc(t))
+        return Envelope(timeFunc, start=self.start, end=self.end)
+    
+    @convertUnits(dt='s')
+    def diff(self,dt=0.1e-9):
+        """ dt --> time unit: second
+            Return its differential coefficient
+            for original timeFunc()
+        """
+        # def timeFunc(t): ## 3 point equation, error ~ O(dt^2)
+        #     return (self.timeFunc(t+dt)-self.timeFunc(t-dt))/(2*dt)
+        def timeFunc(t): ## 5 point equation, error ~ O(dt^4)
+            return (self.timeFunc(t-2*dt)-8*self.timeFunc(t-dt)
+                    +8*self.timeFunc(t+dt)-self.timeFunc(t+2*dt))/(12*dt)
+        return Envelope(timeFunc, start=self.start, end=self.end)
+    
+    @convertUnits(delay='s')
+    def time_shift(self,delay=0):
+        """ delay --> time unit: second
+            let timeFunc shifting 'delay', 
+
+            Example:
+                Square 0 ns ~ 15 ns after 
+                shift with delay = 5 ns is 
+                Square 5 n ~ 20 ns.
+        """
+        def timeFunc(t):
+            return self.timeFunc(t-delay)
+        self.timeFunc = timeFunc
+        self.start = self.start+delay
+        self.end = self.end+delay
+        return
 
 
 _zero = lambda x: 0*x
