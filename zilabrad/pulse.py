@@ -155,8 +155,8 @@ NOTHING = Envelope(lambda t: np.zeros(len(t)),start=None,end=None)
 @convertUnits(amp=None, start='s', end='s', freq='Hz', length='s')
 def readout(amp=0.1, phase=0.0, start=0, end=None, freq=10e6, length=100e-9):
     if end is None: end = start + length
-
-    @limit_trange(start,end)
+    ## here is some error at special start point
+    # @limit_trange(start,end) 
     def timeFunc(t): # two np.sin() faster than np.exp() ; 
         return amp*(np.cos(2*pi*freq*(t-start)+phase)
                     +1j*np.sin(2*pi*freq*(t-start)+phase))

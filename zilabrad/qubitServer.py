@@ -414,38 +414,36 @@ def _MakeSequence(qubits,devices_dict,devices,back=False):
     trigger_end = Unit2SI(devices['waveGenerator']['awg_pulse_length']
                         +devices['waveGenerator']['bias_fall'])
     for qb in qubits.values():
-        for ch_type in ['xy','z','readout']:
-            ## info -> {ch_type:'dev_name-ch_path'}
-            dev_name,ch_path = qb['channels'][ch_type].split('-')
-            ## initial device dict
-            if dev_name not in waves_Func.keys():
-                waves_Func[dev_name] = {}
-                
-            path_type,path_num = re.findall(r'[A-Za-z]+|\d+', ch_path)
-            wave_factor = 1
-            ## make sure 'awg'+idx in dict.keys(), fit form in dev.send_waveform()
-            if (path_type == 'ch') or (path_type =='wave') or (path_type =='channel'):
-                ch_path = 'awg'+str((int(path_num)-1)//2)
-                if int((int(path_num)-1)%2) == 1:
-                    wave_factor = 1j
+        for qb_key in ['xy','z','r']:
+            if qb_key in qb.keys():
+                if qb_key == 'r':
+                    ch_type = 'readout'
+                else:
+                    ch_type = qb_key
+                ## info -> {ch_type:'dev_name-ch_path'}
+                dev_name,ch_path = qb['channels'][ch_type].split('-')
+                ## initial device dict
+                if dev_name not in waves_Func.keys():
+                    waves_Func[dev_name] = {}
                     
-            ## check qb.channels information
-            if 'awg' not in ch_path:
-                raise Exception('Error channel path: %r'%ch_path)
-            # if ch_type not in ['xy','z','readout']:
-            #     raise Exception('Error channel type: %r'%ch_type)
-                
-            ## initial device's waveforms Envelope
-            if ch_path not in waves_Func[dev_name]:
-                waves_Func[dev_name][ch_path] = pulse.NOTHING
-                
-            if (ch_type == 'z') and ('z' in qb.keys()):
-                waves_Func[dev_name][ch_path] += wave_factor*qb['z']
-            if (ch_type == 'xy') and ('xy' in qb.keys()):
-                waves_Func[dev_name][ch_path] += wave_factor*qb['xy']
-            if (ch_type == 'readout') and ('r' in qb.keys()):
-                waves_Func[dev_name][ch_path] += wave_factor*qb['r']
-            
+                path_type,path_num = re.findall(r'[A-Za-z]+|\d+', ch_path)
+                wave_factor = 1
+                ## make sure 'awg'+idx in dict.keys(), fit form in dev.send_waveform()
+                if (path_type == 'ch') or (path_type =='wave') or (path_type =='channel'):
+                    ch_path = 'awg'+str((int(path_num)-1)//2)
+                    if int((int(path_num)-1)%2) == 1:
+                        wave_factor = 1j
+                        
+                ## check qb.channels information
+                if 'awg' not in ch_path:
+                    raise Exception('Error channel path: %r'%ch_path)
+                # if ch_type not in ['xy','z','readout']:
+                #     raise Exception('Error channel type: %r'%ch_type)
+                    
+                ## initial device's waveforms Envelope
+                if ch_path not in waves_Func[dev_name]:
+                    waves_Func[dev_name][ch_path] = pulse.NOTHING
+                waves_Func[dev_name][ch_path] += wave_factor*qb[qb_key]
 
     # compile waveforms Envelope to array, and send to devices_dict
     for dev_name,waves_dict in waves_Func.items():

@@ -190,16 +190,16 @@ def amp2power(amp):
 ############################
 ## control Settings tools ##
 ############################
-def LO_ctrl(sample,qb,command,parameter=None,TYPE='xy'):
+def LO_ctrl(devices,qb,command,parameter=None,TYPE='xy'):
     dev_name = qb['channels']['LO_%s'%TYPE]
     if isinstance(parameter,type(None)):
-        return sample[dev_name][command]
+        return devices[dev_name][command]
     else:
-        sample[dev_name][command] = parameter
+        devices['_taskflow'][dev_name][command] = parameter
 
-def set_stats(sample,qb,stats):
+def set_stats(devices,qb,stats):
     dev_name = qb['channels']['readout'].split('-')[0]
-    sample[dev_name]['set_result_sample']=stats
+    devices['_taskflow'][dev_name]['set_result_sample']=stats
 
 
 
@@ -256,9 +256,10 @@ def add_spectroscopyPulse(q,amp,start,length,freq=0,phase=0):
 
 
 def add_zpaPulse(q,amp,start,length):
-    if 'z' not in q:
-        q['z'] = NOTHING
-    q['z']+=pulse.rect(start=start,amp=amp,length=length)
+    if abs(amp)>1e-5: 
+        if 'z' not in q:
+            q['z'] = NOTHING
+        q['z']+=pulse.rect(start=start,amp=amp,length=length)
 
 
 
@@ -416,19 +417,19 @@ def tunneling(qubits, data, level=2):
 ###        Test tool       ###
 ##############################
 from IPython.display import clear_output
-def live_plot(q):
+def live_plot(q,ch=['xy','z','r']):
     tlist = np.arange(0,10e-6,0.5e-9)
-    xy_array = q.xy(tlist)
-    z_array = q.z(tlist)
-    r_array = q.r(tlist)
-    # clear_output(wait=True)
-    fig = plt.figure(figsize=(15,5))
-    ax = fig.add_subplot(1,1,1)
-    plt.plot(tlist,xy_array.real)
-    plt.plot(tlist,xy_array.imag)
-    plt.plot(tlist,z_array.real-1)
-    plt.plot(tlist,r_array.real-2)
-    plt.plot(tlist,r_array.imag-2)
+    _array = []
+    move_dict = {'xy':0,'z':1,'r':2}
+    for c in ch:
+        _array += [q[c](tlist)]
+    clear_output(wait=True)
+    # fig = plt.figure(figsize=(15,4))
+    # ax = fig.add_subplot(1,1,1)
+    for c,_a in zip(ch,_array):
+        plt.plot(tlist,_a.real-move_dict[c])
+        plt.plot(tlist,_a.imag-move_dict[c])
+
     plt.yticks([0,-1,-2],['xy','z','r'])
     plt.show()
     time.sleep(0.2)
@@ -445,7 +446,7 @@ def live_plot(q):
 ### single qubit ###
 ####################
 @expfunc_decorator
-def s21_scan(Sample, measure=0, freq=6.0*GHz, mw_power=None, bias=None, power=None,
+def s21_scan(Sample, measure=[0], freq=6.0*GHz, mw_power=None, bias=None, power=None,
              name='s21_scan', des=''):
     """
     s21 scanning:
@@ -455,191 +456,86 @@ def s21_scan(Sample, measure=0, freq=6.0*GHz, mw_power=None, bias=None, power=No
         power[dBm] -> AWG amplitude in Read-line, will convert [dBm] to [V]
         mw_power[dBm] -> Microwave Source(read) power
     """
-    sample, qubits, Qubits = loadQubits(Sample, write_access=True)
-    q = qubits[measure]
-
-    for qb in qubits:
-        qb['qa_demod_freq'] = (qb['readout_freq']-LO_ctrl(Sample,qb,'frequency',TYPE='readout'))
-
-    if freq is None:
-        freq = q['readout_freq']
-    if bias is None:
-        bias = q['bias']
-    if power is None:
-        power = q['readout_amp']
-    if mw_power is None:
-        mw_power = LO_ctrl(Sample,q,'power',TYPE='readout')
-
-    # set some parameters name;
-    axes = [(freq, 'freq'), (bias, 'bias'), (power, 'power'),
-            (mw_power, 'mw_power')]
-    deps = MultiChannel_Deps([q],raw=True,prob=False)
+    devices, qubits, measure = loadQubits(Sample,measure)
+    q = qubits[measure[0]]
+        # set some parameters name;
+    axes = [(freq, 'freq'), (bias, 'bias'), (power, 'power'),(mw_power, 'mw_power')]
+    deps = MultiChannel_Deps(measure,raw=True,prob=False)
     kw = {}
-
     # create dataset
     dataset = sweeps.prepDataset(
-        sample, name+' '+des, axes, deps, measure=measure, kw=kw)
-
-    def runSweeper(devices, para_list):
-        freq, bias, power, mw_power = para_list
-        clear_qubitsChannels([q])
-        q['bias'] = bias
-        q['readout_amp'] = power*dBm
-        LO_ctrl(sample,q,'frequency',
-            (freq - Unit2SI(q['qa_demod_freq']))*Hz,TYPE='readout')
-        LO_ctrl(sample,q,'power',
-            mw_power*dBm,TYPE='readout')
+        Sample, name+' '+des, axes, deps, measure=measure, kw=kw)
+    def runSweeper(freq,bias,power,mw_power):
+        if bias is not None:
+            q['bias'] = bias
+        if power is not None:
+            q['readout_amp'] = power*dBm
+        if freq is not None:
+            LO_ctrl(devices,q,'frequency',(freq - Unit2SI(q['demod_freq']))*Hz,TYPE='readout')
+        if mw_power is not None:
+            LO_ctrl(devices,q,'power',mw_power*dBm,TYPE='readout')
 
         ## start this sequence
         start = 0
         ## set readout pulse & demod window
-        for qb in qubits:
+        for qb in qubits.values():
             qb['do_readout'] = True
-            add_readoutPulse(qb,start,sample,SyncDemod=True)
+            add_readoutPulse(qb,start,devices,SyncDemod=True)
         ## set bias for qubits
-        add_qubitsDC(qubits,sample)
+        add_qubitsDC(qubits,devices)
         # get result value
-        data = runQubits([q],sample['Settings'])
-
-        result = MultiChannel_Result([q],data,raw=True,prob=False)
+        data = runQubits(qubits,devices,measure)
+        result = MultiChannel_Result(qubits,data,raw=True,prob=False)
         return result
 
     axes_scans = gridSweep(axes)
     result_list = RunAllExperiment(runSweeper, axes_scans, dataset)
+    return 
 
 
-
-
-
-
-@expfunc_decorator
-def s21_dispersive(Sample, measure=0, freq=6.0*GHz, 
-                   mw_power=None, bias=None, power=None,
-                   name='s21_dispersive', des=''):
-    """
-    s21 dispersive:
-        measure -> controlled & read qubit index
-        freq[Hz] -> readin pulse frequency after mixer
-        bias[None,V] -> DC signal in Z-line during running
-        power[dBm] -> AWG amplitude in Read-line, will convert [dBm] to [V]
-        mw_power[dBm] -> Microwave Source(read) power
-    """
-    sample, qubits, Qubits = loadQubits(Sample, write_access=True)
-    q = qubits[measure]
-
-    for qb in qubits:
-        qb['qa_demod_freq'] = (qb['readout_freq']-LO_ctrl(Sample,qb,'frequency',TYPE='readout'))
-
-    if freq is None:
-        freq = q['readout_freq']
-    if bias is None:
-        bias = q['bias']
-    if power is None:
-        power = q['readout_amp']
-    if mw_power is None:
-        mw_power = LO_ctrl(Sample,q,'power',TYPE='readout')
-
-    # set some parameters name;
-    axes = [(freq, 'freq'), (bias, 'bias'), (power, 'power'),
-            (mw_power, 'mw_power')]
-    deps = [('Amplitude|0>', 's21 for %s' % q.__name__,''),
-            ('Phase|0>', 's21 for %s' % q.__name__,''),
-            ('I|0>', '', ''),('Q|0>', '', ''),
-            ('Amplitude|1>', 's21 for %s' % q.__name__,''),
-            ('Phase|1>', 's21 for %s' % q.__name__,''),
-            ('I|1>', '', ''),('Q|1>', '', ''),
-            ('SNR', '', '')]
-    kw = {}
-
-    # create dataset
-    dataset = sweeps.prepDataset(
-        sample, name+' '+des, axes, deps, measure=measure, kw=kw)
-
-    def runSweeper(devices, para_list):
-        freq, bias, power, mw_power = para_list
-        
-        q['bias'] = bias
-        q['readout_amp'] = power*dBm
-        LO_ctrl(sample,q,'frequency',
-            (freq - Unit2SI(q['qa_demod_freq']))*Hz,TYPE='readout')
-        LO_ctrl(sample,q,'power',
-            mw_power*dBm,TYPE='readout')
-
-        ## start this sequence: |0>
-        clear_qubitsChannels([q])
-        start = 0
-        add_XYgate(Sample,q,start,factor=1)
-        start += dict(q['gate']['pipulse'])['Len']['s']
-        ## set readout pulse & demod window
-        for qb in qubits:
-            qb['do_readout'] = True
-            add_readoutPulse(qb,start,sample,SyncDemod=True)
-        ## set bias for qubits
-        add_qubitsDC(qubits,sample)
-        # get result value
-        data0 = runQubits([q],sample['Settings'])
-
-
-        ## start this sequence: |1>
-        clear_qubitsChannels([q])
-        start = 0
-        add_XYgate(Sample,q,start,factor=1)
-        start += dict(q['gate']['pipulse'])['Len']['s']
-        ## set readout pulse & demod window
-        for qb in qubits:
-            qb['do_readout'] = True
-            add_readoutPulse(qb,start,sample,SyncDemod=True)
-        ## set bias for qubits
-        add_qubitsDC(qubits,sample)
-        # get result value
-        data1 = runQubits([q],sample['Settings'])
-
-
-
-        result = MultiChannel_Result([q],data0,raw=True,prob=False)
-        result+= MultiChannel_Result([q],data1,raw=True,prob=False)
-        result+= [np.abs((result[2]-result[6])+1j*(result[3]-result[7]))]
-        return result
-
-    axes_scans = gridSweep(axes)
-    result_list = RunAllExperiment(runSweeper, axes_scans, dataset)
-
+# @expfunc_decorator
+# def s21_dispersive(Sample, measure=0, freq=6.0*GHz, 
+#                    mw_power=None, bias=None, power=None,
+#                    name='s21_dispersive', des=''):
+#     """
+#     s21 dispersive:
+#         measure -> controlled & read qubit index
+#         freq[Hz] -> readin pulse frequency after mixer
+#         bias[None,V] -> DC signal in Z-line during running
+#         power[dBm] -> AWG amplitude in Read-line, will convert [dBm] to [V]
+#         mw_power[dBm] -> Microwave Source(read) power
+#     """
 
 
 
 
 @expfunc_decorator
 def spectroscopy(Sample, measure=0, freq=6.0*GHz, sb_freq=0*MHz,
-                 specLen=1*us, specAmp=0.05, bias=None, zpa=0,
+                 specLen=1*us, specAmp=0.3, bias=None, zpa=0,
+                 mw_power=0*dBm,
                  name='spectroscopy', des=''):
     """ 
     """
-    sample, qubits, Qubits = loadQubits(Sample, write_access=True)
-    q = qubits[measure]
+    devices, qubits, measure = loadQubits(Sample,measure)
+    q = qubits[measure[0]]
 
-    for qb in qubits:
-        qb['qa_demod_freq'] = (qb['readout_freq']-LO_ctrl(Sample,qb,'frequency',TYPE='readout'))
-
-    if bias is None:
-        bias = q['bias']
+    LO_ctrl(devices,q,'power',mw_power,TYPE='xy')
 
     # set some parameters name;
-    axes = [(freq, 'freq'), (sb_freq, 'sb_freq'), 
+    axes = [(freq, 'frequency'), (sb_freq, 'sideband'), 
             (specLen, 'specLen'), (specAmp, 'specAmp'),
             (bias, 'bias'), (zpa, 'zpa')]
-    deps = MultiChannel_Deps([q],raw=True,prob=True)
-    kw = {}
+    deps = MultiChannel_Deps(measure,raw=True,prob=True)
+    kw = {'LO_XY Power':mw_power}
 
     # create dataset
     dataset = sweeps.prepDataset(
-        sample, name+' '+des, axes, deps, measure=measure, kw=kw)
-
-    def runSweeper(devices, para_list):
-        freq, sb_freq, specLen, specAmp, bias, zpa = para_list
-        clear_qubitsChannels([q])
-        q['bias'] = bias
-        LO_ctrl(sample,q,'frequency',(freq-sb_freq)*Hz,TYPE='xy')
-
+        Sample, name+' '+des, axes, deps, measure=measure, kw=kw)
+    def runSweeper(freq,sb_freq,specLen,specAmp,bias,zpa):
+        if bias is not None:
+            q['bias'] = bias
+        if freq is not None:
+            LO_ctrl(devices,q,'frequency',(freq-sb_freq)*Hz,TYPE='xy')
         ## start this sequence
         start = 0
         add_spectroscopyPulse(q,specAmp,start,specLen,freq=sb_freq)
@@ -647,32 +543,28 @@ def spectroscopy(Sample, measure=0, freq=6.0*GHz, sb_freq=0*MHz,
         start += specLen
 
         ## set readout pulse & demod window
-        for qb in qubits:
+        for qb in qubits.values():
             qb['do_readout'] = True
-            add_readoutPulse(qb,start,sample,SyncDemod=True)
+            add_readoutPulse(qb,start,devices,SyncDemod=True)
         ## set bias for qubits
-        add_qubitsDC(qubits,sample)
+        add_qubitsDC(qubits,devices)
+        # live_plot(q,['xy','r'])
+        # reset_qubits(qubits)
+        # return [0]*5
 
 
-        # live_plot(q)
-        # result=[-1]*5
-        # # get result value
-        data = runQubits([q],sample['Settings'])
-
-        result = MultiChannel_Result([q],data,raw=True,prob=True)
+        ## get result value
+        data = runQubits(qubits,devices,measure)
+        result = MultiChannel_Result(qubits,data,raw=True,prob=True)
         return result
 
     axes_scans = gridSweep(axes)
     result_list = RunAllExperiment(runSweeper, axes_scans, dataset)
-
-
-
-
-
+    return
 
 
 @expfunc_decorator
-def rabi(Sample, measure=[0], piamp=0.1, pilen=40*ns, delay=0*ns, reps = 1000,
+def rabi(Sample, measure=[0], piamp=0.1, pilen=40*ns,
          df=0*MHz, bias=None, zpa=0, name='rabi', des=''):
     """
     """
@@ -680,7 +572,7 @@ def rabi(Sample, measure=[0], piamp=0.1, pilen=40*ns, delay=0*ns, reps = 1000,
     q = qubits[measure[0]]
 
     # set some parameters name;
-    axes = [(piamp, 'piamp'), (pilen, 'pilen'), (delay,'delay'),
+    axes = [(piamp, 'piamp'), (pilen, 'pilen'),
             (df, 'df'), (bias, 'bias'), (zpa, 'zpa')]
     deps = MultiChannel_Deps(measure,raw=True,prob=True)
     kw = {}
@@ -689,16 +581,15 @@ def rabi(Sample, measure=[0], piamp=0.1, pilen=40*ns, delay=0*ns, reps = 1000,
     dataset = sweeps.prepDataset(
         Sample, name+' '+des, axes, deps, measure=measure, kw=kw)
 
-    def runSweeper(piamp,pilen,delay,df,bias,zpa):
+    def runSweeper(piamp,pilen,df,bias,zpa):
         if bias is not None:
             q['bias'] = bias
 
         ## start this sequence
-        start = delay
-        for k in range(reps):
-            add_XYgate(devices,q,start,amp=piamp,length=pilen,df=df)
-            add_zpaPulse(q,zpa,start,pilen)
-            start += pilen+10e-9
+        start = 0
+        add_XYgate(devices,q,start,amp=piamp,length=pilen,df=df)
+        add_zpaPulse(q,zpa,start,pilen)
+        start += pilen
         ## set readout pulse & demod window
         for qb in qubits.values():
             qb['do_readout'] = True
@@ -708,13 +599,6 @@ def rabi(Sample, measure=[0], piamp=0.1, pilen=40*ns, delay=0*ns, reps = 1000,
 
         ## get result
         data = runQubits(qubits,devices,measure)
-        # ts = np.arange(0,10e-6,1/2.4e9)
-        # for qb in qubits.values():
-        #     if 'xy' in qb:
-        #         qb['xy'] = qb['xy'](ts)[:int((pilen+20e-9)*2.4e9*num)]
-        #     if 'z' in qb:
-        #         qb['z'] = qb['z'](ts)[:int((pilen+20e-9)*2.4e9*num)]
-        # data = runQubits_raw(qubits,devices,measure)
         result = MultiChannel_Result(qubits,data,raw=True,prob=True)
         return result
 
@@ -726,191 +610,31 @@ def rabi(Sample, measure=[0], piamp=0.1, pilen=40*ns, delay=0*ns, reps = 1000,
 
 
 
-@expfunc_decorator
-def IQraw(Sample,measure=0,stats=None,reps=1,back=False,name='IQraw',des=''):
-    """ 
-    """
-    sample, qubits, Qubits = loadQubits(Sample, write_access=True)
-    q = qubits[measure]
-
-    for qb in qubits:
-        qb['qa_demod_freq'] = (qb['readout_freq']-LO_ctrl(Sample,qb,'frequency',TYPE='readout'))
-
-    if stats is not None:
-        set_stats(sample,q,stats)
-
-    # set some parameters name;
-    axes = [] #[(reps, 'reps')]
-    deps = [('Is', '|0>', ''), ('Qs', '|0>', ''),
-            ('Is', '|1>', ''), ('Qs', '|1>', '')]
-    kw = {}
-
-    # create dataset
-    dataset = sweeps.prepDataset(
-        sample, name+' '+des, axes, deps, measure=measure, kw=kw)
-
-    def runSweeper(devices, para_list):
-        # reps = para_list[0]
-
-        ## start this sequence: |0>
-        clear_qubitsChannels([q])
-        start = 0
-        add_XYgate(Sample,q,start,factor=0)
-        start += dict(q['gate']['pipulse'])['Len']['s']
-        ## set readout pulse & demod window
-        for qb in qubits:
-            qb['do_readout'] = True
-            add_readoutPulse(qb,start,sample,SyncDemod=True)
-        ## set bias for qubits
-        add_qubitsDC(qubits,sample)
-        # get result value
-        data0 = runQubits([q],sample['Settings'])
-
-
-        ## start this sequence: |1>
-        clear_qubitsChannels([q])
-        start = 0
-        add_XYgate(Sample,q,start,factor=1)
-        start += dict(q['gate']['pipulse'])['Len']['s']
-        ## set readout pulse & demod window
-        for qb in qubits:
-            qb['do_readout'] = True
-            add_readoutPulse(qb,start,sample,SyncDemod=True)
-        ## set bias for qubits
-        add_qubitsDC(qubits,sample)
-        # get result value
-        data1 = runQubits([q],sample['Settings'])
-
-
-        # date process
-        Is0 = np.real(data0[measure])
-        Qs0 = np.imag(data0[measure])
-        Is1 = np.real(data1[measure])
-        Qs1 = np.imag(data1[measure])
-
-        result = [Is0, Qs0, Is1, Qs1]
-        return result
-
-
-    axes_scans = gridSweep(axes)
-    result_list = RunAllExperiment(runSweeper, axes_scans, dataset, raw=True)
-    if back:
-        return result_list[0]
+# @expfunc_decorator
+# def IQraw(Sample,measure=0,stats=None,reps=1,back=False,name='IQraw',des=''):
+#     """ 
+#     """
 
 
 
 
 
+# @expfunc_decorator
+# def T1(Sample,measure=0,delay=10*us,bias=None,zpa=0,name='T1',des=''):
+#     """
+#     """
 
-@expfunc_decorator
-def T1(Sample,measure=0,delay=10*us,bias=None,zpa=0,name='T1',des=''):
-    """
-    """
-    sample, qubits, Qubits = loadQubits(Sample, write_access=True)
-    q = qubits[measure]
 
-    for qb in qubits:
-        qb['qa_demod_freq'] = (qb['readout_freq']-LO_ctrl(Sample,qb,'frequency',TYPE='readout'))
 
-    if bias is None:
-        bias = q['bias']
-
-    # set some parameters name;
-    axes = [(delay, 'delay'),(bias, 'bias'), (zpa, 'zpa')]
-    deps = MultiChannel_Deps([q],raw=True,prob=True)
-    kw = {}
-
-    # create dataset
-    dataset = sweeps.prepDataset(
-        sample, name+' '+des, axes, deps, measure=measure, kw=kw)
-
-    def runSweeper(devices, para_list):
-        delay,bias,zpa = para_list
-        clear_qubitsChannels([q])
-        q['bias'] = bias
-
-        ## start this sequence
-        start = 0
-        add_XYgate(Sample,q,start)
-        start += dict(q['gate']['pipulse'])['Len']['s']
-        add_zpaPulse(q,zpa,start,delay)
-        start += delay
-
-        ## set readout pulse & demod window
-        for qb in qubits:
-            qb['do_readout'] = True
-            add_readoutPulse(qb,start,sample,SyncDemod=True)
-        ## set bias for qubits
-        add_qubitsDC(qubits,sample)
-
-        # get result value
-        data = runQubits([q],sample['Settings'])
-
-        result = MultiChannel_Result([q],data,raw=True,prob=True)
-        return result
-
-    axes_scans = gridSweep(axes)
-    result_list = RunAllExperiment(runSweeper, axes_scans, dataset)
+# @expfunc_decorator
+# def ramsey(Sample,measure=0,delay=10*us,fringeFreq=10*MHz, 
+#            PHASE=np.pi/2,bias=None,zpa=0,name='ramsey',des=''):
+#     """
+#     """
 
 
 
 
-
-
-
-@expfunc_decorator
-def ramsey(Sample,measure=0,delay=10*us,fringeFreq=10*MHz, 
-           PHASE=np.pi/2,bias=None,zpa=0,name='ramsey',des=''):
-    """
-    """
-    sample, qubits, Qubits = loadQubits(Sample, write_access=True)
-    q = qubits[measure]
-
-    for qb in qubits:
-        qb['qa_demod_freq'] = (qb['readout_freq']-LO_ctrl(Sample,qb,'frequency',TYPE='readout'))
-
-    if bias is None:
-        bias = q['bias']
-
-    # set some parameters name;
-    axes = [(delay, 'delay'),(fringeFreq,'fringeFreq'),
-            (PHASE,'phase'),(bias, 'bias'), (zpa, 'zpa')]
-    deps = MultiChannel_Deps([q],raw=True,prob=True)
-    kw = {}
-
-    # create dataset
-    dataset = sweeps.prepDataset(
-        sample, name+' '+des, axes, deps, measure=measure, kw=kw)
-
-    def runSweeper(devices, para_list):
-        delay,fringeFreq,PHASE,bias,zpa = para_list
-        clear_qubitsChannels([q])
-        q['bias'] = bias
-
-        ## start this sequence
-        start = 0
-        add_XYgate(Sample,q,start,factor=0.5)
-        start += dict(q['gate']['pipulse'])['Len']['s']
-        add_zpaPulse(q,zpa,start,delay)
-        start += delay
-        add_XYgate(Sample,q,start,factor=0.5,phi=PHASE+fringeFreq*delay*2*np.pi)
-        start += dict(q['gate']['pipulse'])['Len']['s']
-        ## set readout pulse & demod window
-        for qb in qubits:
-            qb['do_readout'] = True
-            add_readoutPulse(qb,start,sample,SyncDemod=True)
-        ## set bias for qubits
-        add_qubitsDC(qubits,sample)
-
-        live_plot(q)
-        # get result value
-        data = runQubits([q],sample['Settings'])
-
-        result = MultiChannel_Result([q],data,raw=True,prob=True)
-        return result
-
-    axes_scans = gridSweep(axes)
-    result_list = RunAllExperiment(runSweeper, axes_scans, dataset)
 
 
 
