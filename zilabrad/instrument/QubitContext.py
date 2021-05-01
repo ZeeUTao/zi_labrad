@@ -1,211 +1,140 @@
+# -*- coding: utf-8 -*-
 """
 Resources for qubit and devices
 """
+import importlib ## for import other class by string
+
+
 from zilabrad.pyle.workflow import switchSession
 from zilabrad.pyle.registry import RegistryWrapper
+from zilabrad.pyle.tools import singleton
 
-from zilabrad.instrument.zurichHelper import zurich_qa, zurich_hd, ziDAQ
-from zilabrad.instrument.servers.anritsu_MG3692C import AnritsuServer
-from zilabrad.util import singleton
-from zilabrad.instrument.corrector import correct
 
 import labrad
 
-
-def update_session(user='hwh'):
-    cxn = labrad.connect()
-    ss = switchSession(cxn, user=user, session=None)
-    return ss
-
-
-def loadQubits(sample, write_access=False):
-    """Get local copies of the sample configuration stored in the
-    labrad.registry.
-
-    If you do not use labrad, you can create a class as a wrapped dictionary,
-    which is also saved as files in your computer.
-    The sample object can also read, write and update the files
-
-    Returns the local sample config, and also extracts the individual
-    qubit configurations, as specified by the sample['config'] list.  If
-    write_access is True, also returns the qubit registry wrappers themselves,
-    so that updates can be saved back into the registry.
-    """
-    Qubits = [sample[q] for q in sample['config']]
-    sample = sample.copy()
-    qubits = [sample[q] for q in sample['config']]
-
-    # only return original qubit objects if requested
-    if write_access:
-        return sample, qubits, Qubits
-    else:
-        return sample, qubits
 
 
 @singleton
 class qubitContext(object):
     """
-    resources of the experimental devices
+    resources of the experimental devices, 
+    use get_server(device name) to get 
+    active device instance.
     """
 
-    def __init__(self, cxn=None):
+    def __init__(self,cxn=None,user_sample=None):
         """
         Args:
-            deviceInfo (dict): devices dictionary
-            servers_xxx: object of server
+            servers (dict): devices dictionary
         """
-        self.cxn = cxn
-        if self.cxn is None:
+        if cxn is None:
             self.cxn = labrad.connect()
+        else:
+            self.cxn = cxn
+            
+        if user_sample is not None:
+            self.user_sample = user_sample
+        self._ini_setup()
 
-        self.deviceInfo = self.loadInfo(paths=['Servers', 'devices'])
-        self.wiring = dict(self.deviceInfo.get('wiring'))
+    def _ini_setup(self):
+        self.servers = {}
+        self.servers_group = {'ArbitraryWaveGenerator':{},
+                              'MicrowaveSource':{},
+                              'DataAcquisition':{},
+                              'QuantumAnalyzer':{},
+                              'DCsource':{},
+                              'Oscilloscope':{},
+                              'SpectrumAnalyzer':{},
+                              'VectorNetworkAnalyzer':{},
+                              'BasicDriver':{},
+                              'Virtual':{},
+                             }
 
-        self.IPdict_microwave = dict(self.deviceInfo['microwave_source'])
-        self.servers_microwave = AnritsuServer(
-            list(self.IPdict_microwave.values())
-            )
-        self.servers_qa = self._get_zurich_servers('ziQA_id')
-        self.servers_hd = self._get_zurich_servers('ziHD_id')
-        self.servers_daq = ziDAQ().daq
+        self.deviceInfo = RegistryWrapper(self.cxn,['','Servers', 'Devices']).copy()
+        self.ActiveDevices = self.deviceInfo['ActiveDevices']
 
-        self.registry_calibration = RegistryWrapper(
-            self.cxn, ['', 'Zurich Calibration'])
-        self.init_correct()
+    def _active_all_devices(self):
+        for dev_name in self.deviceInfo['ActiveDevices']:
+            dev = self.get_server(name=dev_name,active=True,raw=False)
 
-    @property
-    def ADC_FS(self):
-        """ADC sampling rate
-        """
-        qa = self.get_server('qa', 'qa_1')
-        return qa.FS
+        if 'ziDAQ' in self.servers.keys(): ## 控制苏黎世仪器的接口
+            self.daq = self.servers['ziDAQ'].daq
 
-    @property
-    def DAC_FS(self):
-        """DAC sampling rate
-        """
-        hd = self.get_server('hd', 'hd_1')
-        return hd.FS
 
-    def get_server(self, type: str, name: str or None):
+    def get_server(self, name: str or None, active=False, raw=False):
         """return the object of server
-        example: get_server('qa', 'qa_1')
+        example: get_server('qa_1')
         """
-        if type == 'qa':
-            return self.servers_qa[name]
-        elif type == 'hd':
-            return self.servers_hd[name]
-        elif type == 'daq':
-            return self.servers_daq
-        elif type == 'microwave_source':
-            return self.servers_microwave
+        if active:
+            if name in self.deviceInfo.keys():
+                driver_path = self.deviceInfo[name]['driver_path']
+                device_class = self.deviceInfo[name]['driver_class']
+                address = self.deviceInfo[name]['address']
+                ## Load the device driver python file
+                try:
+                    device_driver = importlib.import_module(driver_path)
+                    dev = getattr(device_driver,device_class)(name,address)
+                except Exception as e:
+                    print('[%s] create failed:\n    path: %s \n    class: %s \n    address: %s'%
+                        (name,driver_path,device_class,address))
+                    raise e
+                ## 将单例类的实例从dict中取出
+                if isinstance(dev,dict) and raw == False: 
+                    dev = dev[name]
+                self.servers[name] = dev
+                self.servers_group[self.deviceInfo[name]['device_type']][name] = dev
+                print('connected [%s] --> %s'%(name,address))
+                return dev
+            else:
+                print('Cannot find Server [%s]!'%name)
+                return
+        else:
+            if name in self.servers.keys():
+                return self.servers[name]
+            elif name in self.deviceInfo.keys():
+                print('[%s] not activated!'%name)
+                return
+            else:
+                print('Cannot find Server [%s]!'%name)
+                return
 
-    def get_servers_group(self, type='qa'):
+    def get_servers_group(self, name: str):
         """return a collection of servers for the same type
         (if they have more than ones)
         """
-        if type == 'qa':
-            return self.servers_qa
-        elif type == 'hd':
-            return self.servers_hd
-        elif type == 'zurich':
-            return {
-                **self.servers_qa,
-                **self.servers_hd
-            }
+        if name in self.servers_group.keys():
+            return self.servers_group[name]
+        else:
+            print('Unknown device type [%s]!'%name)
+            return
 
-    def init_correct(self):
-        self.device_mapping_dict = dict(self.deviceInfo['ziQA_id'] +
-                                        self.deviceInfo['ziHD_id'])
-        # example: {'qa_1':'dev2591','hd_1':'dev8334'}
-        self.zero_correction = correct.Zero_correction(
-            self.servers_daq, self.registry_calibration)
-        self.zero_correction.init_tables(self.device_mapping_dict)
+    def get_type(self,name:str):
+        if name in self.deviceInfo.keys():
+            return self.deviceInfo[name]['device_type']
+        else:
+            print('Cannot find Server [%s]!'%name)
+            return
 
-    @staticmethod
-    def getQubits_paras(qubits: dict, key: str):
-        """ Get specified parameters from dictionary (qubits)
-        """
-        return [_qubit[key] for _qubit in qubits]
+    # def remove_server(self,name): ## 单例怎么删啊!!
+    #     if name in self.deviceInfo.keys():
+    #         dev_dict = self.get_server(name=name,active=True,raw=True)
+    #         del dev_dict[name]
+    #     else:
+    #         print('Cannot find Server [%s]!'%name)
+    #         return
 
-    def loadInfo(self, paths):
-        """
-        load the sample information from specified directory.
-
-        Args:
-            paths (list): Array with data of waveform 1.
-
-        Returns:
-            reg.copy() (dict):
-            the key-value information from the directory of paths
-        """
-        reg = RegistryWrapper(self.cxn, ['']+paths)
-        return reg.copy()
-
-    def _get_zurich_servers(self, name: str):
-        """
-        Args:
-            name: deviceInfo key, 'ziQA_id', 'ziHD_id'
-        Returns (dict):
-            for example {'1',object}, object is an
-            instance of device server (class).
-            Do not worry about the instance of the same device is
-            recreated, which is set into a conditional singleton.
-        """
-        self._server_class = {
-            'ziQA_id': zurich_qa,
-            'ziHD_id': zurich_hd,
-        }
-
-        if name not in self._server_class:
-            raise TypeError("No such device type %s" % (name))
-        deviceDict = dict(self.deviceInfo[name])
-
-        for _id in deviceDict:
-            server = self._server_class[name]
-            serversDict = server(
-                _id, device_id=deviceDict[_id],
-                labone_ip=self.deviceInfo['labone_ip'])
-            # here "=" is not an error, because the
-            # class is a singletonMany (returns a dict of objects)
-        return serversDict
-
-    def getPorts(self, qubits):
-        """
-        Get the AWG ports for zurich HD according to whether the
-        corresponding keys exist.
-        Args:
-            qubits, list of dictionary
-        Returns:
-            ports (list)
-            for example, [('hd_1', 7), ('hd_1', 5), ('hd_1', 6), ('hd_1', 8)]
-
-        TODO:
-        1. ports dictionary should only be created once in
-        the beginning of experiment.
-        """
-        ports = []
-        for q in qubits:
-            channels = dict(q['channels'])
-            # the order must be 'dc,xy,z'! match the order in qubitServer
-            if 'dc' in q.keys():
-                # if channels have not 'dc', ports += [None]
-                ports += [channels.get('dc')]
-            if 'xy' in q.keys():
-                ports += [channels['xy_I'], channels['xy_Q']]
-            if 'z' in q.keys():
-                ports += [channels.get('z')]
-        return ports
-
-    def clearTempParas(self):
-        attr_names = ['ports']
-        for name in attr_names:
-            if hasattr(self, name):
-                delattr(self, name)
 
     def refresh(self):
-        self.deviceInfo = self.loadInfo(paths=['Servers', 'devices'])
-        self.wiring = dict(self.deviceInfo.get('wiring'))
+        self._ini_setup()
+        self._active_all_devices()
 
-        self.servers_qa = self._get_zurich_servers('ziQA_id')
-        self.servers_hd = self._get_zurich_servers('ziHD_id')
+
+
+
+
+
+
+
+
+
+

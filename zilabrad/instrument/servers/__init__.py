@@ -1,3 +1,0 @@
-"""
-independent servers
-"""
