@@ -5,17 +5,17 @@ import pyvisa
 from functools import wraps
 import logging
 import gc
-from zilabrad.pyle.tools import singletonMany, Unit2SI
+from zilabrad.pyle.tools import Unit2SI
 from zilabrad.instrument.QubitContext import qubitContext
 
 max_refresh = 3
 
 
-@singletonMany
 class AnritsuServer(object):
     """ use pyvisa to connect with device
     """
-    def __init__(self,obj_name:str,address:str):
+
+    def __init__(self, obj_name: str, address: str):
         gc.collect()
         self.deviceName = "ANRITSU MG3692C"
         self.name = obj_name
@@ -55,7 +55,7 @@ class AnritsuServer(object):
             res = self.device.query(':sour:freq?')
             return eval(res)
         else:
-            self.device.write(':sour:freq %f Hz' %Unit2SI(freq))
+            self.device.write(':sour:freq %f Hz' % Unit2SI(freq))
 
     @refresh_when_error
     def power(self, power=None):
@@ -64,7 +64,7 @@ class AnritsuServer(object):
             res = self.device.query(':sour:pow?')
             return eval(res)
         else:
-            self.device.write(':sour:pow %f' %Unit2SI(power))
+            self.device.write(':sour:pow %f' % Unit2SI(power))
 
     @refresh_when_error
     def output(self, state: (None or bool) = None):

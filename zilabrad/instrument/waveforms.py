@@ -11,15 +11,13 @@ from math import ceil
 from zilabrad.pyle.tools import singleton
 
 
-
-
 @singleton
 class waveGenerator(object):
     """
     Represents a control waveform as a function of time
 
     """
-    def __init__(self, name='default',address=None):
+    def __init__(self, name='default', address=None):
         self.name = name
 
     # We can use pyle.envelopes to define some complicated waveforms.
@@ -48,7 +46,7 @@ class waveGenerator(object):
             return [func(start + idx*interval) for idx in range(steps)]
         elif mode.upper() == 'IQ':
             _list = [func(start + idx*interval) for idx in range(steps)]
-            return [np.real(_list),np.imag(_list)]
+            return [np.real(_list), np.imag(_list)]
 
     def func2array_withNumpy(self, func,
                              start: float = None,
@@ -93,5 +91,3 @@ class waveGenerator(object):
             return result
         else:
             return result
-
-
