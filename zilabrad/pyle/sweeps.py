@@ -5,6 +5,7 @@ from zilabrad.pyle.util import getch
 from zilabrad.pyle.datasaver import Dataset
 
 
+
 def prepDataset(sample, name, axes=None, dependents=None, measure=None, kw=None):
     """Prepare dataset for a sweep.
 
@@ -35,27 +36,32 @@ def prepDataset(sample, name, axes=None, dependents=None, measure=None, kw=None)
     (just one qubit measured, identified by index in sample['config']) or a list
     of integers (multiple qubits measured).
     """
-    conf = list(sample['config'])
+    if not hasattr(sample,'values'):
+        sample = sample.copy()
+    conf = list(sample['Qubits']['config'])
 
     # copy parameters
     kw = {} if kw is None else dict(kw)
     kw.update(sample)  # copy all sample data
 
-    if measure is None:
-        measure = list(range(len(conf)))
+    if measure is None: ## convert measure = ['q1',..]
+        measure = conf
     elif isinstance(measure, int):
+        measure = conf[measure]
+    elif isinstance(measure, str):
         measure = [measure]
 
-    if hasattr(measure, 'params'):
-        # this is a Measurer
-        kw.update(measure.params())
-    else:
-        kw['measure'] = measure
+    # if hasattr(measure, 'params'):
+    #     # this is a Measurer
+    #     kw.update(measure.params())
+    # else:
+    #     kw['measure'] = measure
+    kw['measure'] = measure
 
     # update dataset name to reflect which qubits are measured
-    for i, q in enumerate(conf):
-        if i in kw['measure']:
-            conf[i] = '|%s>' % q
+    for idx,qb_name in enumerate(conf):
+        if qb_name in kw['measure']:
+            conf[idx] = '|%s>' %qb_name
     name = '%s: %s' % (', '.join(conf), name)
 
     # create list of independent vars
@@ -75,19 +81,19 @@ def prepDataset(sample, name, axes=None, dependents=None, measure=None, kw=None)
             # param value is static
             kw[label] = param
 
-    # create list of dependent vars
-    if dependents is None:
-        if hasattr(measure, 'dependents'):
-            # this is a Measurer
-            dependents = measure.dependents()
-        else:
-            n = len(measure)
-            if n == 1:
-                labels = ['|1>']
-            else:
-                labels = ['|%s>' % bin(i)[2:].rjust(n, '0')
-                          for i in range(2**n)]
-            dependents = [('Probability', s, '') for s in labels]
+    # # create list of dependent vars
+    # if dependents is None:
+    #     if hasattr(measure, 'dependents'):
+    #         # this is a Measurer
+    #         dependents = measure.dependents()
+    #     else:
+    #         n = len(measure)
+    #         if n == 1:
+    #             labels = ['|1>']
+    #         else:
+    #             labels = ['|%s>' % bin(i)[2:].rjust(n, '0')
+    #                       for i in range(2**n)]
+    #         dependents = [('Probability', s, '') for s in labels]
 
     return Dataset(
         path=list(sample._dir),
